@@ -25,6 +25,39 @@ clean_sheet <- function(df, protect = character(0)) {
   df %>% remove_empty("rows")
 }
 
+#' Guarantee a data frame has the given columns, so a downstream
+#' select()/join() never fails with a hard-to-trace "column doesn't
+#' exist" error several steps away from the real cause.
+#'
+#' Any missing column is added as all-NA, with a warning naming the
+#' sheet, the missing column(s), and the columns actually found - so
+#' the pipeline degrades gracefully (e.g. an intervention just gets no
+#' Uganda-fallback effectiveness figure) instead of stopping the whole
+#' run. Use this whenever a data frame from R/01_import.R + R/02 is
+#' about to be select()ed or joined by a column name that depends on
+#' the source sheet's exact layout.
+#'
+#' @param df A data frame
+#' @param cols Character vector of column names that must be present
+#' @param sheet_label Sheet name, used only in the warning message
+#' @return df, with any missing column added as NA
+ensure_columns <- function(df, cols, sheet_label) {
+  missing <- setdiff(cols, names(df))
+  if (length(missing) > 0) {
+    warning(
+      "'", sheet_label, "' is missing expected column(s): ", paste(missing, collapse = ", "), ".\n",
+      "Actual columns found: ", paste(names(df), collapse = " | "), "\n",
+      "Proceeding with NA for the missing column(s). This usually means the ",
+      "workbook in data/raw/ has a different layout on this sheet than the ",
+      "one this pipeline was built against - check the position map for '",
+      sheet_label, "' in R/02_cleaning.R.",
+      call. = FALSE
+    )
+    for (col in missing) df[[col]] <- NA
+  }
+  df
+}
+
 #' Rename columns by their position (1 = column A, 2 = column B, ...)
 #'
 #' Several source sheets repeat the same header text across multiple

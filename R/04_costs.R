@@ -26,6 +26,9 @@ library(dplyr)
 #'   cost_manual_usd, cost_oht_usd, unit_cost_final_usd, cost_status
 #'   ("Manual override" / "Senegal OHT" / "Missing"), cost_note
 build_cost_table <- function(top20_causes, oht_drug_costs) {
+  top20_causes   <- ensure_columns(top20_causes, c("intervention", "cost_manual_input_usd"), "Senegal HBP Tool - Top20 Causes")
+  oht_drug_costs <- ensure_columns(oht_drug_costs, c("intervention", "unit_cost_usd"), "OHT Drug supply costs")
+
   top20_causes %>%
     select(intervention, cost_manual_input_usd) %>%
     left_join(

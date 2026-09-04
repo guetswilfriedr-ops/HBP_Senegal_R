@@ -52,6 +52,11 @@ build_effectiveness_table <- function(interventions, id_ratio, tufts_ratios,
 
   base <- data.frame(intervention = unique(interventions), stringsAsFactors = FALSE)
 
+  id_ratio     <- ensure_columns(id_ratio, c("intervention", "article_id", "ratio_number", "confidence"), "id_Ratio")
+  tufts_ratios <- ensure_columns(tufts_ratios, c("article_id", "ratio_number", "dalys_per_patient_delta"), "Tufts_Ratios")
+  name_mapping <- ensure_columns(name_mapping, c("recent_intervention", "old_intervention"), "OHT Int name mapping recent-old")
+  uganda_hbp   <- ensure_columns(uganda_hbp, c("old_intervention", "dalys_averted_per_patient_uganda"), "Uganda HBP Tool")
+
   tufts_lookup <- base %>%
     left_join(
       id_ratio %>% select(intervention, article_id, ratio_number, confidence),

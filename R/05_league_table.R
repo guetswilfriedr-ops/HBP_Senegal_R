@@ -45,6 +45,14 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
                                        effectiveness_table, cost_table,
                                        cet_usd_per_daly) {
 
+  oht_case_data <- ensure_columns(oht_case_data, c(
+    "intervention", "case_status", "target_2023", "pin_2023",
+    "coverage_2023", "cases_scaleup_2023", "cases_full_2023"
+  ), "OHT Case data")
+  top20_causes <- ensure_columns(top20_causes, c(
+    "intervention", "main_category", "sub_category", "gbd_cause", "top20_dalys_flag"
+  ), "Senegal HBP Tool - Top20 Causes")
+
   master_list <- oht_case_data %>%
     distinct(intervention, .keep_all = TRUE) %>%
     select(intervention, case_status, target_2023, pin_2023, coverage_2023,
