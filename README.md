@@ -41,6 +41,18 @@ or from the terminal:
 Rscript main.R
 ```
 
+### Using a workbook stored outside the project
+
+If your Excel workbook lives elsewhere on your machine, don't edit `raw_data_path` in `config.R` (that path is shared with everyone via git). Instead, create a `config_local.R` file at the project root — it is git-ignored and automatically sourced if present:
+
+```r
+config_local <- list(
+  raw_data_path = "C:/Users/you/Documents/hbp_senegal_data.xlsx"
+)
+```
+
+Only the fields you list are overridden; everything else keeps its default. Each collaborator can point to their own local copy without touching version-controlled files.
+
 ## Requirements
 
 ```r

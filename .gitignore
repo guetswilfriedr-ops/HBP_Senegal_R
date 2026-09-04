@@ -3,6 +3,8 @@
 .RData
 .Ruserdata
 
+config_local.R
+
 data/raw/*
 !data/raw/.gitkeep
 data/processed/*
