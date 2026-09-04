@@ -14,16 +14,14 @@
 #     -> included in the league table, with cost/DALY/ICER computed
 #        and ranked.
 #
-# ASSUMPTION (flagged, not silently guessed): the original workbook's
-# "Ranking of NHP" column (kept here as rank_nhp) ranks interventions
-# by ascending net DALYs averted (full implementation) - the Excel
-# formula's own order, replicated exactly below. That is not the same
-# as ranking by cost-effectiveness. The league table returned here is
-# sorted by icer_rank (ascending ICER = best value for money first),
-# the conventional presentation for a cost-effectiveness league
-# table; rank_nhp is kept as a column so it can be cross-checked
-# against the original workbook. Confirm with the analyst which
-# ordering should be presented.
+# Presentation order (confirmed by the analyst): the league table
+# returned here is sorted by rank_nhp - descending net health benefit
+# (net DALYs averted, full/100% implementation scenario), i.e. the
+# intervention with the largest net benefit is rank 1. This differs
+# from the original workbook's own "Ranking of NHP" column, which
+# ranked ascending (worst net benefit first); ascending order is not
+# used anywhere here. icer_rank (ascending ICER = best value for
+# money first) is kept as a secondary column for reference.
 # ============================================================
 
 library(dplyr)
@@ -97,20 +95,19 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
       diff_net_dalys            = net_dalys_full - net_dalys_realistic,
       health_system_value_usd   = diff_net_dalys * cet_usd_per_daly
     ) %>%
-    arrange(net_dalys_full) %>%
-    mutate(rank_nhp = row_number()) %>%
     arrange(icer_usd) %>%
     mutate(icer_rank = row_number()) %>%
+    arrange(desc(net_dalys_full)) %>%
+    mutate(rank_nhp = row_number()) %>%
     select(
-      intervention, main_category, sub_category, gbd_cause,
+      rank_nhp, intervention, main_category, sub_category, gbd_cause,
+      net_dalys_full, net_dalys_realistic, diff_net_dalys, health_system_value_usd,
+      icer_usd, icer_rank,
       effectiveness_status, dalys_final,
       cost_status, unit_cost_final_usd,
       cases_scaleup_2023, cases_full_2023,
       total_cost_realistic_usd, total_dalys_realistic,
-      total_cost_full_usd, total_dalys_full,
-      icer_usd, icer_rank,
-      net_dalys_realistic, net_dalys_full, diff_net_dalys,
-      health_system_value_usd, rank_nhp
+      total_cost_full_usd, total_dalys_full
     )
 
   funnel_log <- funnel %>%

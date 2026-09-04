@@ -99,7 +99,7 @@ install.packages(c("readxl", "dplyr", "janitor", "ggplot2"))
 
 For interventions with complete data: `total_cost_full = unit_cost × cases_full`, `total_dalys_full = dalys_per_patient × cases_full` (and the equivalent `_realistic` versions using the realistic-scale-up case volume), `icer_usd = total_cost_full / total_dalys_full`, and a net-benefit figure using `config$cet_usd_per_daly` (435, sourced from the workbook's `'Data sources'!B15` — update it in `config.R`, not by re-adding that sheet).
 
-**Assumption to confirm**: the workbook's own "Ranking of NHP" column (kept here as `rank_nhp`) ranks by *ascending* net DALYs averted (full implementation) — the worst first, which is unusual for a priority list. `league_table_rebuilt.csv` is sorted by `icer_rank` instead (ascending ICER = best value for money first), the conventional league-table order; `rank_nhp` is kept for cross-checking against the original workbook. Confirm which ordering you actually want presented.
+**Presentation order (confirmed)**: `league_table_rebuilt.csv` is sorted by `rank_nhp` — descending net health benefit (net DALYs averted, full/100% implementation scenario), so rank 1 is the intervention with the largest net benefit. This differs from the original workbook's own "Ranking of NHP" column, which ranked *ascending* (worst net benefit first); that ascending order is not used here. `icer_usd` / `icer_rank` (ascending ICER = best value for money first) are kept as columns for reference alongside it.
 
 ### Re-running after a change (the point of rebuilding this in R)
 
