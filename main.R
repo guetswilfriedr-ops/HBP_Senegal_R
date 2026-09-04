@@ -48,6 +48,11 @@ funnel <- build_intervention_funnel(
 export_table(funnel$league_table, "league_table_rebuilt", config$output_tables_dir)
 export_table(funnel$funnel_log, "intervention_funnel_log", config$output_tables_dir)
 
+# Main deliverable: a single formatted .xlsx (league table + funnel
+# log as a second sheet), matching the presentation of the original
+# workbook's LeagueTable_Final.
+export_league_table_xlsx(funnel$league_table, funnel$funnel_log, "league_table_final", config$output_tables_dir)
+
 # ------------------------------------------------------------
 # Baseline from the original workbook (sanity-check / comparison)
 # ------------------------------------------------------------

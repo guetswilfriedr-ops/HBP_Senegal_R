@@ -42,8 +42,8 @@ Rscript main.R
 ```
 
 This produces, in `output/tables/`:
-- `league_table_rebuilt.csv` — the rebuilt league table (see below).
-- `intervention_funnel_log.csv` — all 389 interventions, with the stage and reason any excluded one was excluded.
+- **`league_table_final.xlsx`** — the main deliverable: the rebuilt league table, formatted for presentation (bold header, frozen header row, currency/DALY number formats, readable column labels), on one sheet, with the full 389-intervention funnel log as a second sheet in the same file.
+- `league_table_rebuilt.csv` / `intervention_funnel_log.csv` — the same two tables as plain CSV, with the internal (snake_case) column names, for further analysis in R or elsewhere.
 - `original_top_20_cost_effective.csv` / `original_burden_by_category.csv` — read directly from the original workbook's own `LeagueTable_Final` / `GBD_TIER3`, kept as a comparison baseline.
 
 ### Using a workbook stored outside the project
@@ -61,7 +61,7 @@ Only the fields you list are overridden; everything else keeps its default. Each
 ## Requirements
 
 ```r
-install.packages(c("readxl", "dplyr", "janitor", "ggplot2"))
+install.packages(c("readxl", "dplyr", "janitor", "ggplot2", "openxlsx"))
 ```
 
 ## The league table machine
