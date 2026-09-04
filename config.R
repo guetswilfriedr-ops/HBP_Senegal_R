@@ -59,7 +59,7 @@ config <- list(
   # column names (0 = header is row 1, readxl default).
   # Sheets not listed here default to 0.
   sheet_header_row = list(
-    "Senegal HBP Tool - Top20 Causes" = 2,
+    "Senegal HBP Tool - Top20 Causes" = 1,
     "Initial draft Sen"               = 2,
     "IHME_DATA_ALL_AGE_FINAL"         = 1,
     "OHT Case data"                   = 1,

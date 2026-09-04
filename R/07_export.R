@@ -105,5 +105,69 @@ export_league_table_xlsx <- function(league_table, funnel_log, name, dir) {
   freezePane(wb, "Intervention funnel log", firstActiveRow = 2, firstActiveCol = 2)
   setColWidths(wb, "Intervention funnel log", cols = seq_along(funnel_log), widths = "auto")
 
-  saveWorkbook(wb, file.path(dir, paste0(name, ".xlsx")), overwrite = TRUE)
+  out_path <- file.path(dir, paste0(name, ".xlsx"))
+  saveWorkbook(wb, out_path, overwrite = TRUE)
+  strip_unused_drawing_refs(out_path)
+}
+
+#' Remove openxlsx's unused drawing/vmlDrawing relationship declarations
+#'
+#' Some openxlsx versions declare a drawing + legacyDrawing (vml)
+#' relationship for every worksheet - to support later comments or
+#' images - without writing the placeholder files, leaving the
+#' worksheet's .rels and [Content_Types].xml pointing at parts that
+#' don't exist in the archive. This pipeline never adds images or
+#' comments, so those declarations are always orphaned; stricter
+#' readers than Excel (e.g. Python's openpyxl) reject the file
+#' outright over this, so it's removed here rather than relied on
+#' Excel's tolerance of it.
+#'
+#' A no-op if the workbook has no such orphaned reference.
+#'
+#' @param path Path to the .xlsx file to fix, in place
+strip_unused_drawing_refs <- function(path) {
+  # Resolve to an absolute path first: zip::zip() below resolves a
+  # relative zipfile against `root` (the temp extraction dir), not
+  # the working directory, which would silently write nowhere useful.
+  path <- normalizePath(path, mustWork = TRUE)
+
+  tmp_dir <- tempfile("xlsx_fix_")
+  dir.create(tmp_dir)
+  on.exit(unlink(tmp_dir, recursive = TRUE), add = TRUE)
+  utils::unzip(path, exdir = tmp_dir)
+
+  rels_files <- list.files(
+    file.path(tmp_dir, "xl", "worksheets", "_rels"),
+    pattern = "\\.rels$", full.names = TRUE
+  )
+  changed <- FALSE
+  for (f in rels_files) {
+    txt <- paste(readLines(f, warn = FALSE), collapse = "")
+    new_txt <- gsub('<Relationship[^>]*Type="[^"]*/(drawing|vmlDrawing)"[^>]*/>', "", txt)
+    if (!identical(new_txt, txt)) {
+      writeLines(new_txt, f)
+      changed <- TRUE
+    }
+  }
+
+  ct_file <- file.path(tmp_dir, "[Content_Types].xml")
+  if (file.exists(ct_file)) {
+    txt <- paste(readLines(ct_file, warn = FALSE), collapse = "")
+    new_txt <- gsub('<Override[^>]*PartName="/xl/drawings/[^"]*"[^>]*/>', "", txt)
+    if (!identical(new_txt, txt)) {
+      writeLines(new_txt, ct_file)
+      changed <- TRUE
+    }
+  }
+
+  if (changed) {
+    # Use the 'zip' package (a hard dependency of openxlsx, so always
+    # available) rather than utils::zip(), which shells out to a
+    # system 'zip' binary that plain R on Windows does not ship with.
+    all_files <- list.files(tmp_dir, recursive = TRUE, all.files = TRUE, include.dirs = FALSE)
+    if (file.exists(path)) file.remove(path)
+    zip::zip(zipfile = path, files = all_files, root = tmp_dir, mode = "mirror")
+  }
+
+  invisible(path)
 }

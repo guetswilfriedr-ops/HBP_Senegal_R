@@ -55,7 +55,7 @@ build_effectiveness_table <- function(interventions, id_ratio, tufts_ratios,
   id_ratio     <- ensure_columns(id_ratio, c("intervention", "article_id", "ratio_number", "confidence"), "id_Ratio")
   tufts_ratios <- ensure_columns(tufts_ratios, c("article_id", "ratio_number", "dalys_per_patient_delta"), "Tufts_Ratios")
   name_mapping <- ensure_columns(name_mapping, c("recent_intervention", "old_intervention"), "OHT Int name mapping recent-old")
-  uganda_hbp   <- ensure_columns(uganda_hbp, c("old_intervention", "dalys_averted_per_patient_uganda"), "Uganda HBP Tool")
+  uganda_hbp   <- ensure_columns(uganda_hbp, c("old_intervention_name", "dalys_averted_per_patient_uganda"), "Uganda HBP Tool")
 
   # article_id/ratio_number must have matching types on both sides of
   # the join below, and the DALY figures must be numeric - a stray
@@ -92,14 +92,23 @@ build_effectiveness_table <- function(interventions, id_ratio, tufts_ratios,
       tufts_implausible = !is.na(dalys_per_patient_delta) & abs(dalys_per_patient_delta) > plausibility_bound
     )
 
+  # Uganda HBP Tool can list the same old intervention name on more
+  # than one row (e.g. a name reused across age bands or delivery
+  # channels); keep only the first, mirroring Excel's MATCH() default
+  # (first match wins), so the join below cannot fan out into extra
+  # rows for an intervention.
+  uganda_hbp_by_name <- uganda_hbp %>%
+    filter(!is.na(old_intervention_name)) %>%
+    distinct(old_intervention_name, .keep_all = TRUE)
+
   uganda_lookup <- tufts_lookup %>%
     left_join(
       name_mapping %>% select(recent_intervention, old_intervention),
       by = c("intervention" = "recent_intervention")
     ) %>%
     left_join(
-      uganda_hbp %>% select(old_intervention, dalys_averted_per_patient_uganda),
-      by = "old_intervention"
+      uganda_hbp_by_name %>% select(old_intervention_name, dalys_averted_per_patient_uganda),
+      by = c("old_intervention" = "old_intervention_name")
     ) %>%
     rename(dalys_uganda = dalys_averted_per_patient_uganda)
 
