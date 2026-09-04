@@ -28,30 +28,28 @@ config <- list(
   # intentionally left out. See README.md for the full rationale.
   sheets_to_load = c(
 
-    # -- HBP intervention list & prioritization (Senegal) --------
-    "SEN_Cartography_insur_scheme",
-    "Senegal HBP Tool - Top20 Causes",
-    "Initial draft Sen",
-    "LeagueTable_Final",
-    "id_Ratio",
-    "OHT - GBD",
-    "OHT Int name mapping recent-old",
+    # -- League table machine: rebuilds LeagueTable_Final from ----
+    # -- first principles (389 interventions -> final ranking) ----
+    "OHT Case data",                    # master list: 389 interventions, demand (case volumes)
+    "Senegal HBP Tool - Top20 Causes",  # 141 interventions linked to a Top-20-DALY GBD cause
+    "id_Ratio",                         # analyst's choice of Tufts article/ratio per intervention
+    "Tufts_Ratios",                     # cost-effectiveness literature database (DALYs averted/patient)
+    "Uganda HBP Tool",                  # fallback DALYs-averted/patient when no Senegal/Tufts ratio
+    "OHT Int name mapping recent-old",  # bridges Senegal intervention names to Uganda's old names
+    "OHT Drug supply costs",            # unit cost per case (Senegal OHT costing)
+    "LeagueTable_Final",                # original workbook's own final table, kept for comparison
 
-    # -- Burden of disease (GBD/IHME, Senegal) -------------------
+    # -- Broader HBP Senegal context (not used by the league --------
+    # -- table machine yet, kept available for other analyses) ------
+    "SEN_Cartography_insur_scheme",
+    "Initial draft Sen",
+    "OHT - GBD",
     "GBD_TIER3",
     "IHME_DATA_ALL_AGE_FINAL",
-
-    # -- Costing engine (OHT, 2023-2028 horizon) -----------------
-    "OHT Case data",
     "OHT Intervention overview",
     "OHT Avg medical personnel minut",
     "OHT Delivery channels",
-    "OHT Drug supply costs",
-
-    # -- Cost-effectiveness reference (DCP3) ---------------------
     "DCP3 - GBD",
-
-    # -- Demographic & macroeconomic parameters (Senegal) --------
     "Population",
     "PPP"
   ),
@@ -66,8 +64,21 @@ config <- list(
     "IHME_DATA_ALL_AGE_FINAL"         = 1,
     "OHT Case data"                   = 1,
     "OHT Intervention overview"       = 1,
-    "OHT Drug supply costs"           = 1
+    "OHT Drug supply costs"           = 1,
+    "Uganda HBP Tool"                 = 2
   ),
+
+  # Cost-effectiveness threshold (CET, $ per DALY averted), used to
+  # convert cost into DALY-equivalent terms in the net-benefit
+  # calculation. Source: 'Data sources'!B15 in the workbook. Update
+  # this value here (not by re-adding the 'Data sources' sheet to
+  # sheets_to_load) if the analyst revises the threshold.
+  cet_usd_per_daly = 435,
+
+  # A Tufts ratio (DALY averted per patient) is discarded as
+  # implausible if its absolute value exceeds this bound, mirroring
+  # the check in 'Senegal HBP Tool - Top20 Causes'!BE.
+  tufts_ratio_plausibility_bound = 6,
 
   # Output locations
   processed_data_dir = "data/processed",
