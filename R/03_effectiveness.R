@@ -57,6 +57,23 @@ build_effectiveness_table <- function(interventions, id_ratio, tufts_ratios,
   name_mapping <- ensure_columns(name_mapping, c("recent_intervention", "old_intervention"), "OHT Int name mapping recent-old")
   uganda_hbp   <- ensure_columns(uganda_hbp, c("old_intervention", "dalys_averted_per_patient_uganda"), "Uganda HBP Tool")
 
+  # article_id/ratio_number must have matching types on both sides of
+  # the join below, and the DALY figures must be numeric - a stray
+  # text value anywhere in a column (a note, "N/A", a leftover Excel
+  # error) otherwise imports the whole column as character and either
+  # breaks the join or errors on abs()/arithmetic further down.
+  to_numeric <- function(x) suppressWarnings(as.numeric(x))
+  id_ratio <- id_ratio %>%
+    mutate(article_id = as.character(article_id), ratio_number = to_numeric(ratio_number))
+  tufts_ratios <- tufts_ratios %>%
+    mutate(
+      article_id = as.character(article_id),
+      ratio_number = to_numeric(ratio_number),
+      dalys_per_patient_delta = to_numeric(dalys_per_patient_delta)
+    )
+  uganda_hbp <- uganda_hbp %>%
+    mutate(dalys_averted_per_patient_uganda = to_numeric(dalys_averted_per_patient_uganda))
+
   tufts_lookup <- base %>%
     left_join(
       id_ratio %>% select(intervention, article_id, ratio_number, confidence),

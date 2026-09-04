@@ -53,10 +53,22 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
     "intervention", "main_category", "sub_category", "gbd_cause", "top20_dalys_flag"
   ), "Senegal HBP Tool - Top20 Causes")
 
+  # These columns are expected to be numeric, but a stray text value
+  # anywhere in the column (e.g. "N/A", "-", a leftover Excel error
+  # like "#N/A") makes readxl import the whole column as character.
+  # Force numeric here; any non-numeric text becomes NA (with a
+  # warning, suppressed here since it's expected/handled downstream
+  # as "no data").
+  to_numeric <- function(x) suppressWarnings(as.numeric(x))
+
   master_list <- oht_case_data %>%
     distinct(intervention, .keep_all = TRUE) %>%
     select(intervention, case_status, target_2023, pin_2023, coverage_2023,
-           cases_scaleup_2023, cases_full_2023)
+           cases_scaleup_2023, cases_full_2023) %>%
+    mutate(across(
+      c(target_2023, pin_2023, coverage_2023, cases_scaleup_2023, cases_full_2023),
+      to_numeric
+    ))
 
   top20_set <- top20_causes %>%
     distinct(intervention, .keep_all = TRUE) %>%
