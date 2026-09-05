@@ -122,12 +122,20 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
       net_dalys_realistic       = total_dalys_realistic - total_cost_realistic_usd / cet_usd_per_daly,
       net_dalys_full            = total_dalys_full - total_cost_full_usd / cet_usd_per_daly,
       diff_net_dalys            = net_dalys_full - net_dalys_realistic,
-      health_system_value_usd   = diff_net_dalys * cet_usd_per_daly
+      health_system_value_usd   = diff_net_dalys * cet_usd_per_daly,
+      # DALYs averted per $1,000 spent is the reciprocal of the ICER,
+      # expressed at a more legible scale for reading and charting
+      dalys_per_1000usd         = if_else(!is.na(icer_usd) & icer_usd != 0, 1000 / icer_usd, NA_real_),
+      implementation_level_pct  = round(100 * cases_scaleup_2023 / cases_full_2023, 1)
     ) %>%
     arrange(icer_usd) %>%
     mutate(icer_rank = row_number()) %>%
     arrange(desc(net_dalys_full)) %>%
-    mutate(rank_nhp = row_number()) %>%
+    mutate(
+      rank_nhp = row_number(),
+      cumulative_cost_full_usd      = cumsum(coalesce(total_cost_full_usd, 0)),
+      cumulative_cost_realistic_usd = cumsum(coalesce(total_cost_realistic_usd, 0))
+    ) %>%
     select(
       rank_nhp, intervention, main_category, sub_category, gbd_cause,
       zero_case_volume_flag, no_target_population_flag,
@@ -136,10 +144,11 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
       time_horizon, perspective_author, costs_discounted, outcome_discounted,
       total_quality_score,
       cost_status, unit_cost_final_usd,
-      cases_scaleup_2023, cases_full_2023,
+      cases_scaleup_2023, cases_full_2023, implementation_level_pct,
       total_cost_realistic_usd, total_dalys_realistic,
       total_cost_full_usd, total_dalys_full,
-      icer_usd, icer_rank,
+      cumulative_cost_full_usd, cumulative_cost_realistic_usd,
+      icer_usd, icer_rank, dalys_per_1000usd,
       net_dalys_realistic, net_dalys_full, diff_net_dalys,
       health_system_value_usd
     )

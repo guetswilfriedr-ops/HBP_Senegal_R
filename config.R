@@ -38,7 +38,6 @@ config <- list(
     "Uganda HBP Tool",                  # fallback DALYs-averted/patient when no Senegal/Tufts ratio
     "OHT Int name mapping recent-old",  # bridges Senegal intervention names to Uganda's old names
     "OHT Drug supply costs",            # unit cost per case (Senegal OHT costing)
-    "LeagueTable_Final",                # the workbook's own final table
 
     # -- Broader HBP Senegal context (not used by the league --------
     # -- table machine yet, kept available for other analyses) ------

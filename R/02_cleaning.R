@@ -112,27 +112,6 @@ rename_at_position <- function(df, position_map, sheet_label = NULL) {
 # clean_names()'s exact output.
 # ------------------------------------------------------------
 
-rename_league_table <- function(df) {
-  df %>%
-    rename(
-      intervention    = `Interventions`,
-      intervention_fr = `Intervention (FR)`,
-      icer_usd        = `ICER (in $)`,
-      cases_per_annum = `Cases per annum`
-    )
-}
-
-rename_gbd_tier3 <- function(df) {
-  df %>%
-    rename(
-      category     = `Category`,
-      cause        = `Cause`,
-      dalys        = `DALYs`,
-      pct_of_dalys = `Percentage of DALYs lost by disease`,
-      category_l1  = `Category (L1)`
-    )
-}
-
 #' "OHT Case data": master list of 389 interventions, demand data
 rename_oht_case_data <- function(df) {
   rename_at_position(df, list(
@@ -240,8 +219,6 @@ rename_name_mapping <- function(df) {
 
 # Sheet name -> rename function, applied before clean_sheet()
 rename_overrides <- list(
-  "LeagueTable_Final"                = rename_league_table,
-  "GBD_TIER3"                         = rename_gbd_tier3,
   "OHT Case data"                       = rename_oht_case_data,
   "OHT Drug supply costs"                 = rename_oht_drug_supply_costs,
   "Senegal HBP Tool - Top20 Causes"         = rename_top20_causes,

@@ -71,7 +71,17 @@ write_xlsx_sheet <- function(wb, sheet_name, df, freeze_col = 1,
 save_xlsx <- function(wb, name, dir) {
   if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
   path <- file.path(dir, paste0(name, ".xlsx"))
-  saveWorkbook(wb, path, overwrite = TRUE)
+  tryCatch(
+    saveWorkbook(wb, path, overwrite = TRUE),
+    error = function(e) {
+      stop(
+        "Could not write '", path, "' (", conditionMessage(e), "). ",
+        "If it is open in Excel, close it and re-run - otherwise this file ",
+        "is left holding stale data from a previous run rather than this one.",
+        call. = FALSE
+      )
+    }
+  )
   strip_unused_drawing_refs(path)
   path
 }
@@ -89,43 +99,37 @@ export_figure <- function(plot, name, dir, width = 10, height = 6) {
 }
 
 # Internal name -> presentation column label, in display order, for
-# the league table (see R/05_league_table.R)
+# the league table (see R/05_league_table.R). Kept to the core metrics
+# a reader needs for the benefits package itself - cost, effectiveness
+# rate, ICER, cumulative spend, and net health benefit at full and
+# realistic implementation. The evidence behind each effectiveness
+# figure (study, author, year, methodology) is traceable in full in
+# the "3 - Effectiveness evidence" sheet of pipeline_steps.xlsx instead
+# of being repeated here.
 league_table_display_columns <- c(
-  rank_nhp                 = "Rank (Net Health Benefit, full implementation)",
-  intervention              = "Intervention",
-  main_category              = "Category",
-  sub_category                = "Sub-category",
-  gbd_cause                    = "GBD cause",
-  zero_case_volume_flag          = "Alert: zero case volume/coverage",
-  no_target_population_flag        = "Alert: no target population",
-  net_dalys_full                     = "Net DALYs averted (full implementation)",
-  net_dalys_realistic                  = "Net DALYs averted (realistic implementation)",
-  diff_net_dalys                         = "Difference (full - realistic)",
-  health_system_value_usd                  = "$ value to health system",
-  icer_usd                                   = "ICER ($ per DALY averted)",
-  icer_rank                                    = "Rank (ICER)",
-  effectiveness_status                           = "Effectiveness source",
-  dalys_final                                      = "DALYs averted per patient",
-  title                                              = "Study title",
-  primary_author                                       = "Study author",
-  issue_year                                             = "Study year",
-  journal_name                                             = "Journal",
-  publication_date                                           = "Publication date",
-  target_countries                                             = "Study country/countries",
-  comparator_modality                                            = "Comparator",
-  time_horizon                                                     = "Study time horizon",
-  perspective_author                                                 = "Study analytic perspective",
-  costs_discounted                                                     = "Costs discounted",
-  outcome_discounted                                                     = "Outcomes discounted",
-  total_quality_score                                                      = "Study quality score",
-  cost_status                                                                = "Cost source",
-  unit_cost_final_usd                                                          = "Unit cost ($)",
-  cases_scaleup_2023                                                             = "Cases (realistic implementation)",
-  cases_full_2023                                                                  = "Cases (full implementation)",
-  total_cost_realistic_usd                                                           = "Total cost - realistic ($)",
-  total_dalys_realistic                                                                = "Total DALYs averted - realistic",
-  total_cost_full_usd                                                                    = "Total cost - full implementation ($)",
-  total_dalys_full                                                                         = "Total DALYs averted - full implementation"
+  rank_nhp                       = "# (rank by net DALYs averted, full implementation)",
+  intervention                   = "Intervention",
+  main_category                  = "Category",
+  sub_category                   = "Sub-category",
+  gbd_cause                      = "GBD cause",
+  cost_status                    = "Cost source",
+  icer_usd                       = "ICER ($)",
+  icer_rank                      = "Rank (ICER)",
+  dalys_per_1000usd              = "DALYs averted per $1,000",
+  cases_full_2023                = "Cases per annum",
+  implementation_level_pct       = "Implementation level (%)",
+  total_cost_full_usd            = "Total cost, full implementation ($)",
+  cumulative_cost_full_usd       = "Cumulative cost, full implementation ($)",
+  total_cost_realistic_usd       = "Total cost, realistic implementation ($)",
+  cumulative_cost_realistic_usd  = "Cumulative cost, realistic implementation ($)",
+  total_dalys_full                = "Total DALYs averted, full implementation",
+  total_dalys_realistic            = "Total DALYs averted, realistic implementation",
+  net_dalys_full                    = "Net DALYs averted, full implementation",
+  net_dalys_realistic                = "Net DALYs averted, realistic implementation",
+  diff_net_dalys                      = "Difference in net DALYs averted",
+  health_system_value_usd               = "$ value to the health system of implementation",
+  zero_case_volume_flag                   = "Alert: zero case volume/coverage",
+  no_target_population_flag                 = "Alert: no target population"
 )
 
 #' Build a league-table-shaped worksheet inside an existing workbook
@@ -140,14 +144,15 @@ add_league_table_sheet <- function(wb, league_table, sheet_name = "League table"
   write_xlsx_sheet(
     wb, sheet_name, display, freeze_col = 2,
     currency_cols = c(
-      "$ value to health system", "Unit cost ($)",
-      "Total cost - realistic ($)", "Total cost - full implementation ($)"
+      "$ value to the health system of implementation",
+      "Total cost, full implementation ($)", "Cumulative cost, full implementation ($)",
+      "Total cost, realistic implementation ($)", "Cumulative cost, realistic implementation ($)"
     ),
     decimal_cols = c(
-      "Net DALYs averted (full implementation)", "Net DALYs averted (realistic implementation)",
-      "Difference (full - realistic)", "DALYs averted per patient",
-      "Total DALYs averted - realistic", "Total DALYs averted - full implementation",
-      "ICER ($ per DALY averted)"
+      "ICER ($)", "DALYs averted per $1,000", "Implementation level (%)",
+      "Total DALYs averted, full implementation", "Total DALYs averted, realistic implementation",
+      "Net DALYs averted, full implementation", "Net DALYs averted, realistic implementation",
+      "Difference in net DALYs averted"
     )
   )
 }

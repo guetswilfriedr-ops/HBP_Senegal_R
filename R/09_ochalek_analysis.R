@@ -2,34 +2,45 @@
 # Efficiency, affordability, and cost-effectiveness-threshold
 # (CET) sensitivity analysis
 #
-# Three views of the league table, each answering a different
-# planning question:
+# Four views of the league table, each answering a different
+# planning question, structured after Ochalek, Claxton, Revill,
+# Sculpher & Rollinger (2016) CHE Research Paper 136:
 #
-#   - Efficiency frontier: ordering every costed, effective
-#     intervention by its ICER and stacking their cost gives a
-#     declining curve of DALYs averted per $1,000 spent - the
-#     rate at which additional spending buys additional health
-#     as the budget is allocated to the best-value interventions
-#     first. A threshold line at the CET marks where that rate
-#     stops clearing the bar the health system is willing to pay.
-#   - Cumulative net health benefit: adding interventions in
-#     descending order of net health benefit (rank_nhp) traces
-#     how total benefit accumulates, and where it would start
-#     falling if lower-priority interventions were added anyway.
-#     Comparing full and realistic implementation shows how much
-#     benefit is left on the table by current coverage levels.
-#   - CET sensitivity: net health benefit is a function of the
-#     threshold itself, so the affordability picture (how many
-#     interventions clear the bar, and at what total cost and
-#     DALYs) changes with it. Senegal has no set of alternative
-#     CET estimates comparable to Ochalek et al. (2016)'s
-#     $38/$61/$120 range for Malawi, so scenarios here are
-#     expressed as a proportion of the reference threshold
-#     (config$cet_usd_per_daly) instead.
+#   - Efficiency frontier (their Figure 5): ordering every costed,
+#     effective intervention by its ICER and stacking their cost
+#     gives a declining curve of DALYs averted per $1,000 spent -
+#     the rate at which additional spending buys additional
+#     health as the budget is allocated to the best-value
+#     interventions first. A threshold line at the CET marks
+#     where that rate stops clearing the bar the health system is
+#     willing to pay.
+#   - Interventions ranked by net health benefit, full
+#     implementation (their Figure 6): net DALYs averted per
+#     intervention (which can be negative for one too costly to
+#     be worth including) alongside the cumulative spend as more
+#     interventions are added.
+#   - Full vs realistic implementation (their Figure 7): the same
+#     ranking, comparing net DALYs averted and cumulative spend at
+#     100% implementation (solid lines) against the coverage
+#     actually expected (dotted lines) - the gap between the two
+#     is health left on the table by partial coverage.
+#   - Budget reallocation (their Table 7): the underspend created
+#     by partial implementation of the affordable core package can
+#     fund additional interventions beyond it; this adds them, in
+#     ascending ICER order, until the underspend runs out.
+#   - CET sensitivity (their Table 8): affordability is a function
+#     of the threshold itself, so this recomputes the affordable
+#     package, its budget, and the reallocation above at several
+#     CET scenarios. Senegal has no published set of alternative
+#     CET estimates comparable to Ochalek et al.'s $38/$61/$120
+#     range for Malawi, so scenarios here are expressed as a
+#     proportion of the reference threshold (config$cet_usd_per_daly).
 # ============================================================
 
 library(dplyr)
 library(ggplot2)
+
+dollars_millions <- scales::label_dollar(scale = 1e-6, suffix = "M", accuracy = 1)
 
 #' Recompute net health benefit, its full/realistic difference, and
 #' the rank_nhp ordering for an alternative CET, from a league table
@@ -54,7 +65,7 @@ recompute_net_benefit <- function(league_table, cet_usd_per_daly) {
     mutate(rank_nhp = row_number())
 }
 
-#' Efficiency frontier: interventions ordered by ICER, each drawn as a
+#' Figure 5 equivalent: interventions ordered by ICER, each drawn as a
 #' bar whose width is its full-implementation cost and whose height is
 #' DALYs averted per $1,000 spent, with a threshold line at the CET
 #'
@@ -66,7 +77,6 @@ build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
     filter(!is.na(icer_usd), total_cost_full_usd > 0) %>%
     arrange(icer_rank) %>%
     mutate(
-      dalys_per_1000usd = 1000 / icer_usd,
       xmax = cumsum(total_cost_full_usd),
       xmin = xmax - total_cost_full_usd
     )
@@ -78,6 +88,10 @@ build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
   # ones alongside costly, low-yield ones) - a log y-axis is needed
   # for the low-yield end of the frontier to stay visible at all.
   log_floor <- min(df$dalys_per_1000usd, na.rm = TRUE) / 2
+  x_span <- max(df$xmax) - min(df$xmin)
+
+  affordable_edge <- df %>% filter(dalys_per_1000usd >= threshold_efficiency) %>% slice_tail(n = 1)
+  best_value <- df %>% slice_head(n = 1)
 
   ggplot(df) +
     geom_rect(
@@ -86,6 +100,32 @@ build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
       color = "white", linewidth = 0.1
     ) +
     geom_hline(yintercept = threshold_efficiency, color = "#C0392B", linetype = "dashed", linewidth = 0.8) +
+    annotate(
+      "text", x = min(df$xmin), y = threshold_efficiency, vjust = -0.6, hjust = 0,
+      label = paste0("CET threshold: ", round(threshold_efficiency, 1), " DALYs / $1,000"),
+      color = "#C0392B", size = 3, fontface = "italic"
+    ) +
+    annotate(
+      "segment", x = best_value$xmax, xend = best_value$xmax + x_span * 0.12,
+      y = best_value$dalys_per_1000usd, yend = best_value$dalys_per_1000usd * 0.35,
+      arrow = arrow(length = unit(0.15, "cm")), color = "#1F4E78"
+    ) +
+    annotate(
+      "text", x = best_value$xmax + x_span * 0.13, y = best_value$dalys_per_1000usd * 0.35,
+      label = paste0("Best value:\n", strwrap(best_value$intervention, width = 28) %>% paste(collapse = "\n")),
+      hjust = 0, size = 2.8, color = "#1F4E78", lineheight = 0.9
+    ) +
+    annotate(
+      "segment", x = affordable_edge$xmax, xend = affordable_edge$xmax,
+      y = threshold_efficiency * 6, yend = threshold_efficiency * 1.2,
+      arrow = arrow(length = unit(0.15, "cm")), color = "#7A3324"
+    ) +
+    annotate(
+      "text", x = affordable_edge$xmax, y = threshold_efficiency * 8, hjust = 0.5,
+      label = paste0("Affordable package: ", dollars_millions(affordable_edge$xmax)),
+      size = 2.8, color = "#7A3324"
+    ) +
+    scale_x_continuous(labels = dollars_millions) +
     scale_y_log10(labels = scales::label_comma()) +
     scale_fill_manual(values = c(`TRUE` = "#1F4E78", `FALSE` = "#B5533C"), guide = "none") +
     labs(
@@ -94,96 +134,200 @@ build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
         "Dashed line: threshold efficiency at CET = $", cet_usd_per_daly,
         " per DALY averted. Log scale: values span several orders of magnitude"
       ),
-      x = "Cumulative cost, full implementation ($)",
+      x = "Cumulative cost, full implementation",
       y = "DALYs averted per $1,000 spent (log scale)"
     ) +
     theme_minimal(base_size = 10) +
     theme(plot.title = element_text(face = "bold", size = 13), panel.grid.minor = element_blank())
 }
 
-#' Cumulative net health benefit as interventions are added in
-#' descending order of net health benefit, full vs realistic
-#' implementation
+#' Figure 6 equivalent: every intervention that reached the league
+#' table, ranked by net health benefit (full implementation), as bars
+#' (colour marks a positive vs. negative net benefit), with cumulative
+#' spend overlaid as a line on a secondary axis
 #'
 #' @param league_table Output of build_intervention_funnel()$league_table
 #' @return A ggplot object
-build_net_benefit_curve_plot <- function(league_table) {
-  df <- league_table %>%
-    arrange(rank_nhp) %>%
-    mutate(
-      cumulative_cost_full           = cumsum(coalesce(total_cost_full_usd, 0)),
-      cumulative_net_dalys_full      = cumsum(coalesce(net_dalys_full, 0)),
-      cumulative_cost_realistic      = cumsum(coalesce(total_cost_realistic_usd, 0)),
-      cumulative_net_dalys_realistic = cumsum(coalesce(net_dalys_realistic, 0))
-    )
+build_fig6_plot <- function(league_table) {
+  df <- league_table %>% arrange(rank_nhp)
+  scale_factor <- max(abs(df$net_dalys_full), na.rm = TRUE) / max(df$cumulative_cost_full_usd, na.rm = TRUE)
 
-  long_df <- bind_rows(
-    df %>% transmute(rank_nhp, cumulative_cost = cumulative_cost_full,
-                      cumulative_net_dalys = cumulative_net_dalys_full,
-                      scenario = "Full implementation"),
-    df %>% transmute(rank_nhp, cumulative_cost = cumulative_cost_realistic,
-                      cumulative_net_dalys = cumulative_net_dalys_realistic,
-                      scenario = "Realistic implementation")
-  )
-
-  ggplot(long_df, aes(x = cumulative_cost, y = cumulative_net_dalys, color = scenario)) +
-    geom_line(linewidth = 1) +
+  ggplot(df, aes(x = rank_nhp)) +
+    geom_col(aes(y = net_dalys_full, fill = net_dalys_full >= 0), width = 0.85) +
+    geom_line(aes(y = cumulative_cost_full_usd * scale_factor), color = "#E8A33D", linewidth = 1) +
     geom_hline(yintercept = 0, color = "#C0392B", linetype = "dashed") +
-    scale_color_manual(values = c(
-      "Full implementation" = "#1F4E78", "Realistic implementation" = "#7FA6C9"
-    )) +
+    scale_fill_manual(values = c(`TRUE` = "#1F4E78", `FALSE` = "#B5533C"), guide = "none") +
+    scale_y_continuous(
+      name = "Net DALYs averted (full implementation)",
+      labels = scales::label_comma(),
+      sec.axis = sec_axis(~ . / scale_factor, name = "Cumulative spend, full implementation", labels = dollars_millions)
+    ) +
     labs(
-      title = "Cumulative net health benefit as interventions are added\n(in descending order of net health benefit)",
-      x = "Cumulative cost ($)", y = "Cumulative net DALYs averted", color = NULL
+      title = "Interventions ranked by net health benefit, with cumulative spend",
+      subtitle = "Full implementation (100%). Negative bars: cost exceeds the health opportunity cost of the CET",
+      x = "Intervention rank (by net health benefit)"
     ) +
     theme_minimal(base_size = 10) +
     theme(
       plot.title = element_text(face = "bold", size = 13),
+      axis.title.y.right = element_text(color = "#E8A33D"),
+      panel.grid.minor = element_blank()
+    )
+}
+
+#' Figure 7 equivalent: for the affordable core package only (ICER at
+#' or below the CET), net health benefit and cumulative spend at full
+#' implementation (solid lines) vs. realistic implementation (dotted
+#' lines) - the gap between them is health and budget left unused by
+#' partial coverage
+#'
+#' @param league_table Output of build_intervention_funnel()$league_table
+#' @param cet_usd_per_daly Cost-effectiveness threshold
+#' @return A ggplot object
+build_fig7_plot <- function(league_table, cet_usd_per_daly) {
+  core <- league_table %>%
+    filter(!is.na(icer_usd), icer_usd <= cet_usd_per_daly) %>%
+    arrange(rank_nhp) %>%
+    mutate(
+      x = row_number(),
+      cumulative_cost_full_core      = cumsum(coalesce(total_cost_full_usd, 0)),
+      cumulative_cost_realistic_core = cumsum(coalesce(total_cost_realistic_usd, 0))
+    )
+
+  scale_factor <- max(abs(core$net_dalys_full), na.rm = TRUE) / max(core$cumulative_cost_full_core, na.rm = TRUE)
+
+  ggplot(core, aes(x = x)) +
+    geom_line(aes(y = net_dalys_full, color = "Net DALYs averted"), linewidth = 1, linetype = "solid") +
+    geom_line(aes(y = net_dalys_realistic, color = "Net DALYs averted"), linewidth = 1, linetype = "dotted") +
+    geom_line(aes(y = cumulative_cost_full_core * scale_factor, color = "Cumulative spend"), linewidth = 1, linetype = "solid") +
+    geom_line(aes(y = cumulative_cost_realistic_core * scale_factor, color = "Cumulative spend"), linewidth = 1, linetype = "dotted") +
+    scale_color_manual(values = c("Net DALYs averted" = "#1F4E78", "Cumulative spend" = "#E8A33D")) +
+    scale_y_continuous(
+      name = "Net DALYs averted",
+      labels = scales::label_comma(),
+      sec.axis = sec_axis(~ . / scale_factor, name = "Cumulative spend", labels = dollars_millions)
+    ) +
+    labs(
+      title = "Full vs realistic implementation: net health benefit and cumulative spend",
+      subtitle = "Affordable core package only. Solid = full implementation (100%); dotted = realistic implementation",
+      x = "Intervention rank within the affordable core package (by net health benefit)",
+      color = NULL
+    ) +
+    theme_minimal(base_size = 10) +
+    theme(
+      plot.title = element_text(face = "bold", size = 13),
+      axis.title.y.right = element_text(color = "#E8A33D"),
       legend.position = "top", panel.grid.minor = element_blank()
     )
 }
 
-#' Interventions affordable at a given CET (net health benefit >= 0
-#' under full implementation), and the resulting budget and DALYs
-#'
-#' @param league_table Output of build_intervention_funnel()$league_table,
-#'   or recompute_net_benefit() output for a non-reference CET
-#' @param cet_usd_per_daly The CET this table applies to
-#' @return A list with:
-#'   table   - the qualifying interventions, in rank_nhp order
-#'   summary - one row: cet_usd_per_daly, n_included, total_cost_full_usd,
-#'             total_dalys_full, total_net_dalys_full
-build_affordability_table <- function(league_table, cet_usd_per_daly) {
-  qualifying <- league_table %>%
-    filter(!is.na(net_dalys_full), net_dalys_full >= 0) %>%
-    arrange(rank_nhp)
-
-  summary <- data.frame(
-    cet_usd_per_daly     = cet_usd_per_daly,
-    n_included           = nrow(qualifying),
-    total_cost_full_usd  = sum(qualifying$total_cost_full_usd, na.rm = TRUE),
-    total_dalys_full     = sum(qualifying$total_dalys_full, na.rm = TRUE),
-    total_net_dalys_full = sum(qualifying$net_dalys_full, na.rm = TRUE)
-  )
-
-  list(table = qualifying, summary = summary)
-}
-
-#' CET sensitivity table: affordability summary recomputed at each of
-#' several CET scenarios, expressed as multipliers of the reference CET
+#' Table 4 equivalent: interventions affordable at a given CET (ICER at
+#' or below the threshold), ranked by ICER, with cumulative spend
 #'
 #' @param league_table Output of build_intervention_funnel()$league_table
-#'   (computed at the reference CET)
+#' @param cet_usd_per_daly The CET this table applies to
+#' @return A data frame, in English column names, ready to write with
+#'   write_xlsx_sheet() (no further relabelling needed)
+build_table4_affordable_by_icer <- function(league_table, cet_usd_per_daly) {
+  league_table %>%
+    filter(!is.na(icer_usd), icer_usd <= cet_usd_per_daly) %>%
+    arrange(icer_rank) %>%
+    transmute(
+      `Ranking based on ICER`                       = icer_rank,
+      `Intervention`                                 = intervention,
+      `ICER [$]`                                     = icer_usd,
+      `DALYs averted per $1,000`                     = dalys_per_1000usd,
+      `Cases per annum`                              = cases_full_2023,
+      `Total cost (full implementation) [$]`         = total_cost_full_usd,
+      `Cumulative cost [$]`                          = cumsum(coalesce(total_cost_full_usd, 0)),
+      `Total DALYs averted (full implementation)`    = total_dalys_full
+    )
+}
+
+#' Table 7 equivalent: the underspend created by partial (realistic)
+#' implementation of the affordable core package, used to fund
+#' additional interventions - beyond the core - in ascending ICER
+#' order until the underspend is exhausted
+#'
+#' @param league_table Output of build_intervention_funnel()$league_table
+#' @param cet_usd_per_daly The CET defining the core package
+#' @return A list with:
+#'   core       - the core affordable package (icer <= CET), with the
+#'                budget underspend it generates at realistic implementation
+#'   additional - the additional interventions funded from that
+#'                underspend, in English column names ready to write
+#'   summary    - one row: cet_usd_per_daly, underspend_usd,
+#'                n_additional_interventions, additional_cost_usd,
+#'                additional_dalys_realistic
+build_budget_reallocation_table <- function(league_table, cet_usd_per_daly) {
+  core <- league_table %>%
+    filter(!is.na(icer_usd), icer_usd <= cet_usd_per_daly) %>%
+    arrange(icer_rank)
+
+  underspend_usd <- sum(core$total_cost_full_usd, na.rm = TRUE) - sum(core$total_cost_realistic_usd, na.rm = TRUE)
+
+  candidates <- league_table %>%
+    filter(!is.na(icer_usd), icer_usd > cet_usd_per_daly) %>%
+    arrange(icer_rank) %>%
+    mutate(cumulative_additional_cost = cumsum(coalesce(total_cost_realistic_usd, 0))) %>%
+    filter(cumulative_additional_cost <= underspend_usd)
+
+  additional <- candidates %>%
+    transmute(
+      `Ranking based on ICER`                             = icer_rank,
+      `Intervention`                                       = intervention,
+      `ICER [$]`                                            = icer_usd,
+      `DALYs averted per $1,000`                             = dalys_per_1000usd,
+      `Cases per annum`                                       = cases_full_2023,
+      `Implementation level (%)`                               = implementation_level_pct,
+      `Total cost (realistic implementation) [$]`               = total_cost_realistic_usd,
+      `Cumulative cost (additional interventions, realistic implementation) [$]` = cumulative_additional_cost,
+      `Total DALYs averted (realistic implementation)`           = total_dalys_realistic
+    )
+
+  summary <- data.frame(
+    cet_usd_per_daly              = cet_usd_per_daly,
+    underspend_usd                = underspend_usd,
+    n_additional_interventions    = nrow(additional),
+    additional_cost_usd           = sum(candidates$total_cost_realistic_usd, na.rm = TRUE),
+    additional_dalys_realistic    = sum(candidates$total_dalys_realistic, na.rm = TRUE)
+  )
+
+  list(core = core, additional = additional, summary = summary)
+}
+
+#' Table 8 equivalent: three (or more) alternative CET scenarios and
+#' the resulting scale of the affordable package - budget and DALYs
+#' averted at full and realistic implementation, the money left in
+#' the budget by partial implementation, and the additional package
+#' (Table 7) that underspend could fund
+#'
+#' @param league_table Output of build_intervention_funnel()$league_table
+#'   (computed at the reference CET; icer_usd/icer_rank do not change
+#'   with the CET so this is valid for every scenario)
 #' @param reference_cet config$cet_usd_per_daly
 #' @param multipliers Named numeric vector of multipliers to apply to
 #'   the reference CET (config$cet_sensitivity_multipliers)
-#' @return One row per scenario: scenario, cet_usd_per_daly, n_included,
-#'   total_cost_full_usd, total_dalys_full, total_net_dalys_full
-build_cet_sensitivity_table <- function(league_table, reference_cet, multipliers) {
+#' @return A data frame, in English column names, ready to write with
+#'   write_xlsx_sheet() (no further relabelling needed)
+build_table8_ehp_scale_sensitivity <- function(league_table, reference_cet, multipliers) {
   lapply(names(multipliers), function(scenario_label) {
     cet_value <- reference_cet * multipliers[[scenario_label]]
-    recomputed <- recompute_net_benefit(league_table, cet_value)
-    affordability <- build_affordability_table(recomputed, cet_value)$summary
-    cbind(data.frame(scenario = scenario_label), affordability)
+    realloc <- build_budget_reallocation_table(league_table, cet_value)
+    core <- realloc$core
+
+    data.frame(
+      `CET scenario`                                          = scenario_label,
+      `How much can Senegal afford to pay to avert a DALY? [$]` = cet_value,
+      `Full implementation: total spend [$]`                    = sum(core$total_cost_full_usd, na.rm = TRUE),
+      `Full implementation: total DALYs averted`                 = sum(core$total_dalys_full, na.rm = TRUE),
+      `Realistic implementation: total spend [$]`                  = sum(core$total_cost_realistic_usd, na.rm = TRUE),
+      `Realistic implementation: total DALYs averted`                = sum(core$total_dalys_realistic, na.rm = TRUE),
+      `Money left in the budget [$]`                                   = realloc$summary$underspend_usd,
+      `Max DALYs from moving realistic to full implementation`           = sum(core$total_dalys_full, na.rm = TRUE) - sum(core$total_dalys_realistic, na.rm = TRUE),
+      `Extended package: budget [$]`                                      = sum(core$total_cost_full_usd, na.rm = TRUE),
+      `Extended package: additional DALYs averted from the underspend`      = realloc$summary$additional_dalys_realistic,
+      check.names = FALSE
+    )
   }) %>% bind_rows()
 }

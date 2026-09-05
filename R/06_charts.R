@@ -84,31 +84,3 @@ reason_short_labels <- c(
   "4" = "no case-volume data"
 )
 
-#' Bar chart ranking every league-table intervention by net health
-#' benefit (full implementation), with a threshold line at zero
-#'
-#' @param league_table Output of build_intervention_funnel()$league_table
-#' @return A ggplot object
-build_nhb_ranking_plot <- function(league_table) {
-  df <- league_table %>%
-    mutate(
-      intervention = factor(intervention, levels = rev(intervention[order(net_dalys_full)])),
-      above_zero = net_dalys_full >= 0
-    )
-
-  ggplot(df, aes(x = intervention, y = net_dalys_full, fill = above_zero)) +
-    geom_col(width = 0.75) +
-    geom_hline(yintercept = 0, color = "#C0392B", linewidth = 0.9) +
-    coord_flip() +
-    scale_fill_manual(values = c(`TRUE` = "#1F4E78", `FALSE` = "#B5533C"), guide = "none") +
-    labs(
-      title = "Interventions ranked by net health benefit (full implementation)",
-      subtitle = "Red line marks zero net health benefit",
-      x = NULL, y = "Net DALYs averted"
-    ) +
-    theme_minimal(base_size = 9) +
-    theme(
-      plot.title = element_text(face = "bold", size = 13),
-      panel.grid.minor = element_blank()
-    )
-}
