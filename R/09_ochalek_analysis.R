@@ -65,20 +65,23 @@ recompute_net_benefit <- function(league_table, cet_usd_per_daly) {
     mutate(rank_nhp = row_number())
 }
 
-#' Figure 5 equivalent: interventions ordered by ICER, each drawn as a
-#' bar whose width is its full-implementation cost and whose height is
-#' DALYs averted per $1,000 spent, with a threshold line at the CET
+#' Figure 5 equivalent: for the interventions affordable at the CET
+#' (ICER at or below the threshold) only, each drawn as a bar whose
+#' width is its full-implementation cost and whose height is DALYs
+#' averted per $1,000 spent, ordered by ICER, with a threshold line at
+#' the CET and each bar labelled with its ICER rank (matching Table 4)
 #'
 #' @param league_table Output of build_intervention_funnel()$league_table
 #' @param cet_usd_per_daly Cost-effectiveness threshold
 #' @return A ggplot object
 build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
   df <- league_table %>%
-    filter(!is.na(icer_usd), total_cost_full_usd > 0) %>%
+    filter(!is.na(icer_usd), icer_usd <= cet_usd_per_daly, total_cost_full_usd > 0) %>%
     arrange(icer_rank) %>%
     mutate(
       xmax = cumsum(total_cost_full_usd),
-      xmin = xmax - total_cost_full_usd
+      xmin = xmax - total_cost_full_usd,
+      xmid = (xmin + xmax) / 2
     )
 
   threshold_efficiency <- 1000 / cet_usd_per_daly
@@ -89,15 +92,18 @@ build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
   # for the low-yield end of the frontier to stay visible at all.
   log_floor <- min(df$dalys_per_1000usd, na.rm = TRUE) / 2
   x_span <- max(df$xmax) - min(df$xmin)
+  budget_usd <- max(df$xmax)
 
-  affordable_edge <- df %>% filter(dalys_per_1000usd >= threshold_efficiency) %>% slice_tail(n = 1)
   best_value <- df %>% slice_head(n = 1)
 
   ggplot(df) +
     geom_rect(
-      aes(xmin = xmin, xmax = xmax, ymin = log_floor, ymax = dalys_per_1000usd,
-          fill = dalys_per_1000usd >= threshold_efficiency),
-      color = "white", linewidth = 0.1
+      aes(xmin = xmin, xmax = xmax, ymin = log_floor, ymax = dalys_per_1000usd),
+      fill = "#1F4E78", color = "white", linewidth = 0.1
+    ) +
+    geom_text(
+      aes(x = xmid, y = dalys_per_1000usd, label = icer_rank),
+      angle = 90, hjust = -0.2, size = 1.9, color = "#1F4E78"
     ) +
     geom_hline(yintercept = threshold_efficiency, color = "#C0392B", linetype = "dashed", linewidth = 0.8) +
     annotate(
@@ -112,27 +118,21 @@ build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
     ) +
     annotate(
       "text", x = best_value$xmax + x_span * 0.13, y = best_value$dalys_per_1000usd * 0.35,
-      label = paste0("Best value:\n", strwrap(best_value$intervention, width = 28) %>% paste(collapse = "\n")),
+      label = paste0("Best value (rank 1):\n", strwrap(best_value$intervention, width = 28) %>% paste(collapse = "\n")),
       hjust = 0, size = 2.8, color = "#1F4E78", lineheight = 0.9
     ) +
     annotate(
-      "segment", x = affordable_edge$xmax, xend = affordable_edge$xmax,
-      y = threshold_efficiency * 6, yend = threshold_efficiency * 1.2,
-      arrow = arrow(length = unit(0.15, "cm")), color = "#7A3324"
+      "text", x = budget_usd, y = log_floor, vjust = 1.6, hjust = 1,
+      label = paste0("Implied budget for the affordable package: ", dollars_millions(budget_usd)),
+      size = 2.8, color = "#7A3324", fontface = "italic"
     ) +
-    annotate(
-      "text", x = affordable_edge$xmax, y = threshold_efficiency * 8, hjust = 0.5,
-      label = paste0("Affordable package: ", dollars_millions(affordable_edge$xmax)),
-      size = 2.8, color = "#7A3324"
-    ) +
-    scale_x_continuous(labels = dollars_millions) +
+    scale_x_continuous(labels = dollars_millions, expand = expansion(mult = c(0.01, 0.22))) +
     scale_y_log10(labels = scales::label_comma()) +
-    scale_fill_manual(values = c(`TRUE` = "#1F4E78", `FALSE` = "#B5533C"), guide = "none") +
     labs(
-      title = "Efficiency frontier: DALYs averted per $1,000 spent, ordered by ICER",
+      title = "DALYs averted per $1,000 for interventions affordable at the CET",
       subtitle = paste0(
-        "Dashed line: threshold efficiency at CET = $", cet_usd_per_daly,
-        " per DALY averted. Log scale: values span several orders of magnitude"
+        "Health opportunity cost: $", cet_usd_per_daly, "/DALY (", round(threshold_efficiency, 1), " DALYs per $1,000). ",
+        "Bar labels: ICER rank from Table 4. Log scale"
       ),
       x = "Cumulative cost, full implementation",
       y = "DALYs averted per $1,000 spent (log scale)"
@@ -221,16 +221,19 @@ build_fig7_plot <- function(league_table, cet_usd_per_daly) {
     )
 }
 
-#' Table 4 equivalent: interventions affordable at a given CET (ICER at
-#' or below the threshold), ranked by ICER, with cumulative spend
+#' Table 4 equivalent: every intervention with a computable ICER,
+#' ranked by ICER (ascending, i.e. best value for money first), with
+#' cumulative spend running past the affordable-package cutoff so a
+#' reader can see how much further spending would buy progressively
+#' worse value. Not filtered by the CET - that filter is what
+#' distinguishes Table 4 from Table 6/7 (the affordable core package)
 #'
 #' @param league_table Output of build_intervention_funnel()$league_table
-#' @param cet_usd_per_daly The CET this table applies to
 #' @return A data frame, in English column names, ready to write with
 #'   write_xlsx_sheet() (no further relabelling needed)
-build_table4_affordable_by_icer <- function(league_table, cet_usd_per_daly) {
+build_table4_icer_ranking <- function(league_table) {
   league_table %>%
-    filter(!is.na(icer_usd), icer_usd <= cet_usd_per_daly) %>%
+    filter(!is.na(icer_usd)) %>%
     arrange(icer_rank) %>%
     transmute(
       `Ranking based on ICER`                       = icer_rank,
@@ -241,6 +244,39 @@ build_table4_affordable_by_icer <- function(league_table, cet_usd_per_daly) {
       `Total cost (full implementation) [$]`         = total_cost_full_usd,
       `Cumulative cost [$]`                          = cumsum(coalesce(total_cost_full_usd, 0)),
       `Total DALYs averted (full implementation)`    = total_dalys_full
+    )
+}
+
+#' Table 6 equivalent: interventions included in the affordable core
+#' package (ICER at or below the CET), ranked by net health benefit,
+#' with the impact on overall population health (net DALYs averted)
+#' and cumulative spend at both full and realistic implementation
+#'
+#' @param league_table Output of build_intervention_funnel()$league_table
+#' @param cet_usd_per_daly The CET defining the core package
+#' @return A data frame, in English column names, ready to write with
+#'   write_xlsx_sheet() (no further relabelling needed)
+build_table6_net_benefit_summary <- function(league_table, cet_usd_per_daly) {
+  league_table %>%
+    filter(!is.na(icer_usd), icer_usd <= cet_usd_per_daly) %>%
+    arrange(rank_nhp) %>%
+    transmute(
+      `#`                                                      = row_number(),
+      `Intervention`                                            = intervention,
+      `ICER [$]`                                                 = icer_usd,
+      `DALYs averted per $1,000`                                  = dalys_per_1000usd,
+      `Cases per annum`                                            = cases_full_2023,
+      `Implementation level (%)`                                    = implementation_level_pct,
+      `Total cost (full implementation) [$]`                         = total_cost_full_usd,
+      `Cumulative cost (full implementation) [$]`                     = cumsum(coalesce(total_cost_full_usd, 0)),
+      `Total cost (realistic implementation) [$]`                      = total_cost_realistic_usd,
+      `Cumulative cost (realistic implementation) [$]`                  = cumsum(coalesce(total_cost_realistic_usd, 0)),
+      `Total DALYs averted (full implementation)`                        = total_dalys_full,
+      `Total DALYs averted (realistic implementation)`                    = total_dalys_realistic,
+      `Net DALYs averted (full implementation)`                            = net_dalys_full,
+      `Net DALYs averted (realistic implementation)`                        = net_dalys_realistic,
+      `Difference in net DALYs averted`                                      = diff_net_dalys,
+      `$ value to the health system of implementation`                        = health_system_value_usd
     )
 }
 

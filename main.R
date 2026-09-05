@@ -71,14 +71,21 @@ write_xlsx_sheet(
 save_xlsx(wb_steps, "pipeline_steps", config$processed_data_dir)
 
 # ------------------------------------------------------------
-# Main deliverable: league table + funnel log + funnel summary,
-# one formatted workbook
+# Main deliverable: the league table on its own - every intervention
+# that reached step 4, ranked by net health benefit
 # ------------------------------------------------------------
 wb_final <- createWorkbook()
 add_league_table_sheet(wb_final, funnel$league_table)
-write_xlsx_sheet(wb_final, "Funnel log", prettify_names(funnel$funnel_log))
-write_xlsx_sheet(wb_final, "Funnel summary", prettify_names(funnel$funnel_summary), freeze_col = 0)
 save_xlsx(wb_final, "league_table_final", config$output_tables_dir)
+
+# ------------------------------------------------------------
+# Funnel audit trail: at which step, and why, each of the 389
+# master-list interventions was included or excluded
+# ------------------------------------------------------------
+wb_funnel <- createWorkbook()
+write_xlsx_sheet(wb_funnel, "Funnel log", prettify_names(funnel$funnel_log))
+write_xlsx_sheet(wb_funnel, "Funnel summary", prettify_names(funnel$funnel_summary), freeze_col = 0)
+save_xlsx(wb_funnel, "funnel_tracking", config$output_tables_dir)
 
 # ------------------------------------------------------------
 # Efficiency, affordability, and CET-sensitivity analysis,
@@ -93,20 +100,35 @@ export_figure(efficiency_frontier_plot, "efficiency_frontier", config$output_fig
 export_figure(fig6_plot, "fig6_net_benefit_ranked", config$output_figures_dir, width = 11, height = 6)
 export_figure(fig7_plot, "fig7_full_vs_realistic", config$output_figures_dir, width = 11, height = 6)
 
-table4_affordable <- build_table4_affordable_by_icer(funnel$league_table, config$cet_usd_per_daly)
+table4_icer_ranking <- build_table4_icer_ranking(funnel$league_table)
+table6_net_benefit  <- build_table6_net_benefit_summary(funnel$league_table, config$cet_usd_per_daly)
 budget_reallocation <- build_budget_reallocation_table(funnel$league_table, config$cet_usd_per_daly)
 table8_sensitivity <- build_table8_ehp_scale_sensitivity(
   funnel$league_table, config$cet_usd_per_daly, config$cet_sensitivity_multipliers
 )
 
-wb_ochalek <- createWorkbook()
+wb_findings <- createWorkbook()
 write_xlsx_sheet(
-  wb_ochalek, "Table 4 - Affordable by ICER", table4_affordable, freeze_col = 2,
+  wb_findings, "Table 4 - ICER ranking", table4_icer_ranking, freeze_col = 2,
   currency_cols = c("Total cost (full implementation) [$]", "Cumulative cost [$]"),
   decimal_cols = c("ICER [$]", "DALYs averted per $1,000", "Total DALYs averted (full implementation)")
 )
 write_xlsx_sheet(
-  wb_ochalek, "Table 7 - Budget reallocation", budget_reallocation$additional, freeze_col = 2,
+  wb_findings, "Table 6 - Net benefit summary", table6_net_benefit, freeze_col = 2,
+  currency_cols = c(
+    "Total cost (full implementation) [$]", "Cumulative cost (full implementation) [$]",
+    "Total cost (realistic implementation) [$]", "Cumulative cost (realistic implementation) [$]",
+    "$ value to the health system of implementation"
+  ),
+  decimal_cols = c(
+    "ICER [$]", "DALYs averted per $1,000", "Implementation level (%)",
+    "Total DALYs averted (full implementation)", "Total DALYs averted (realistic implementation)",
+    "Net DALYs averted (full implementation)", "Net DALYs averted (realistic implementation)",
+    "Difference in net DALYs averted"
+  )
+)
+write_xlsx_sheet(
+  wb_findings, "Table 7 - Budget reallocation", budget_reallocation$additional, freeze_col = 2,
   currency_cols = c(
     "Total cost (realistic implementation) [$]",
     "Cumulative cost (additional interventions, realistic implementation) [$]"
@@ -117,7 +139,7 @@ write_xlsx_sheet(
   )
 )
 write_xlsx_sheet(
-  wb_ochalek, "Table 8 - EHP scale sensitivity", table8_sensitivity, freeze_col = 0,
+  wb_findings, "Table 8 - EHP scale sensitivity", table8_sensitivity, freeze_col = 0,
   currency_cols = c(
     "How much can Senegal afford to pay to avert a DALY? [$]",
     "Full implementation: total spend [$]", "Realistic implementation: total spend [$]",
@@ -129,4 +151,4 @@ write_xlsx_sheet(
     "Extended package: additional DALYs averted from the underspend"
   )
 )
-save_xlsx(wb_ochalek, "ochalek_style_analysis", config$output_tables_dir)
+save_xlsx(wb_findings, "detailed_findings", config$output_tables_dir)
