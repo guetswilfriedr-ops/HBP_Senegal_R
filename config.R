@@ -76,6 +76,19 @@ config <- list(
   # sheets_to_load) if the analyst revises the threshold.
   cet_usd_per_daly = 435,
 
+  # Alternative CET scenarios for the sensitivity analysis
+  # (R/09_ochalek_analysis.R), mirroring the way Ochalek et al. (2016)
+  # show how the affordable package changes under different threshold
+  # estimates. Senegal has no published set of alternative CET
+  # estimates, so scenarios are expressed as a proportion of the
+  # reference threshold above instead of alternative fixed values.
+  cet_sensitivity_multipliers = c(
+    "Low (50% of reference)"  = 0.5,
+    "Reference"               = 1,
+    "High (150% of reference)" = 1.5,
+    "High (200% of reference)" = 2
+  ),
+
   # A Tufts ratio (DALY averted per patient) is discarded as
   # implausible if its absolute value exceeds this bound, mirroring
   # the check in 'Senegal HBP Tool - Top20 Causes'!BE.

@@ -128,13 +128,17 @@ league_table_display_columns <- c(
   total_dalys_full                                                                         = "Total DALYs averted - full implementation"
 )
 
-#' Build the "League table" worksheet inside an existing workbook
-add_league_table_sheet <- function(wb, league_table) {
+#' Build a league-table-shaped worksheet inside an existing workbook
+#'
+#' @param sheet_name Worksheet name (default "League table"); used for
+#'   variants such as the CET-affordability subset, which share the
+#'   same columns
+add_league_table_sheet <- function(wb, league_table, sheet_name = "League table") {
   display <- league_table[, names(league_table_display_columns)]
   names(display) <- unname(league_table_display_columns)
 
   write_xlsx_sheet(
-    wb, "League table", display, freeze_col = 2,
+    wb, sheet_name, display, freeze_col = 2,
     currency_cols = c(
       "$ value to health system", "Unit cost ($)",
       "Total cost - realistic ($)", "Total cost - full implementation ($)"
@@ -171,7 +175,11 @@ extra_display_labels <- c(
   label                    = "Step label",
   n_entering               = "N entering",
   n_excluded               = "N excluded",
-  n_passed                 = "N passed"
+  n_passed                 = "N passed",
+  scenario                 = "CET scenario",
+  cet_usd_per_daly         = "CET ($ per DALY averted)",
+  n_included               = "N interventions affordable",
+  total_net_dalys_full     = "Total net DALYs averted"
 )
 
 column_labels <- c(league_table_display_columns, extra_display_labels)
