@@ -28,16 +28,17 @@ config <- list(
   # intentionally left out. See README.md for the full rationale.
   sheets_to_load = c(
 
-    # -- League table machine: rebuilds LeagueTable_Final from ----
-    # -- first principles (389 interventions -> final ranking) ----
+    # -- League table machine: builds the intervention funnel --------
+    # -- (389 interventions -> ranked league table) -------------------
     "OHT Case data",                    # master list: 389 interventions, demand (case volumes)
     "Senegal HBP Tool - Top20 Causes",  # 141 interventions linked to a Top-20-DALY GBD cause
     "id_Ratio",                         # analyst's choice of Tufts article/ratio per intervention
     "Tufts_Ratios",                     # cost-effectiveness literature database (DALYs averted/patient)
+    "Tufts_Methods",                    # study-level methodology fields (time horizon, perspective, etc.)
     "Uganda HBP Tool",                  # fallback DALYs-averted/patient when no Senegal/Tufts ratio
     "OHT Int name mapping recent-old",  # bridges Senegal intervention names to Uganda's old names
     "OHT Drug supply costs",            # unit cost per case (Senegal OHT costing)
-    "LeagueTable_Final",                # original workbook's own final table, kept for comparison
+    "LeagueTable_Final",                # the workbook's own final table
 
     # -- Broader HBP Senegal context (not used by the league --------
     # -- table machine yet, kept available for other analyses) ------

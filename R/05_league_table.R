@@ -1,48 +1,60 @@
 # ============================================================
-# League table "machine": rebuilds LeagueTable_Final from first
-# principles, tracking every one of the 389 master-list interventions
-# through the funnel so nothing is silently dropped.
+# Intervention funnel and league table
 #
-# Funnel (mirrors the workbook, see README.md for the full formula
-# trace):
-#   389 interventions (OHT Case data)
-#     -> Stage 1: linked to a Top-20-DALY-burden GBD cause
-#                 (present in 'Senegal HBP Tool - Top20 Causes')
-#     -> Stage 2: has an effectiveness figure (R/03_effectiveness.R)
-#     -> Stage 3: has a unit cost (R/04_costs.R)
-#     -> Stage 4: has demand data (case volume > 0)
-#     -> included in the league table, with cost/DALY/ICER computed
-#        and ranked.
+# Tracks every intervention in the master list through a sequence of
+# steps, so every inclusion or exclusion is logged with a reason:
 #
-# Presentation order (confirmed by the analyst): the league table
-# returned here is sorted by rank_nhp - descending net health benefit
-# (net DALYs averted, full/100% implementation scenario), i.e. the
-# intervention with the largest net benefit is rank 1. This differs
-# from the original workbook's own "Ranking of NHP" column, which
-# ranked ascending (worst net benefit first); ascending order is not
-# used anywhere here. icer_rank (ascending ICER = best value for
-# money first) is kept as a secondary column for reference.
+#   Step 1: linked to a Top-20-DALY-burden GBD cause
+#   Step 2: has a unit cost                          (R/03_costs.R)
+#   Step 3: has an effectiveness figure               (R/04_effectiveness.R)
+#   Step 4: has case-volume data to compute totals from
+#   -> included in the league table
+#
+# An intervention with a recorded case volume of exactly zero (as
+# opposed to no case-volume data at all) is NOT excluded at step 4: it
+# is computed normally (giving zero cost and zero DALYs averted) and
+# flagged for attention via zero_case_volume_flag, so the intervention
+# stays visible rather than silently disappearing.
+#
+# The league table itself is never filtered by the sign of the net
+# health benefit: it ranks every intervention that reached step 4,
+# regardless of whether that benefit is positive or negative, so a
+# reader can see directly where each one falls relative to zero.
 # ============================================================
 
 library(dplyr)
 
-#' Build the full intervention funnel: audit log for all 389
-#' interventions, plus the final league table for those with
-#' complete data.
+step_labels <- c(
+  "1" = "Linked to a Top-20-DALY-burden GBD cause",
+  "2" = "Has a unit cost",
+  "3" = "Has an effectiveness figure",
+  "4" = "Has case-volume data to compute totals",
+  "0" = "Included in the league table"
+)
+
+#' Build the intervention funnel and the final league table
 #'
-#' @param oht_case_data Cleaned "OHT Case data" data frame (389 rows)
+#' @param oht_case_data Cleaned "OHT Case data" data frame (the master
+#'   intervention list, with demand/case-volume figures)
 #' @param top20_causes Cleaned "Senegal HBP Tool - Top20 Causes" data frame
-#' @param effectiveness_table Output of build_effectiveness_table()
 #' @param cost_table Output of build_cost_table()
+#' @param effectiveness_table Output of build_effectiveness_table()
 #' @param cet_usd_per_daly Cost-effectiveness threshold (config$cet_usd_per_daly)
 #' @return A list with:
-#'   funnel_log     - one row per of the 389 interventions, with the
-#'                    stage it was excluded at (or "0_included") and
-#'                    a human-readable reason
-#'   league_table   - interventions with complete data, with computed
-#'                    costs, DALYs, ICER, net benefit and ranks
+#'   funnel_log        - one row per master-list intervention, with a
+#'                        numeric `step_excluded` (0 if included),
+#'                        `reason_excluded`, and the zero-case-volume
+#'                        alert flag
+#'   funnel_summary     - one row per step, with how many interventions
+#'                        entered, passed, and were excluded there
+#'   step1_top20        - interventions passing step 1
+#'   step2_cost         - interventions passing step 1-2, with cost
+#'   step3_effectiveness - interventions passing step 1-3, with the
+#'                        effectiveness figure and its study documentation
+#'   league_table       - interventions passing step 1-4, with computed
+#'                        costs, DALYs, ICER, and net health benefit
 build_intervention_funnel <- function(oht_case_data, top20_causes,
-                                       effectiveness_table, cost_table,
+                                       cost_table, effectiveness_table,
                                        cet_usd_per_daly) {
 
   oht_case_data <- ensure_columns(oht_case_data, c(
@@ -53,12 +65,6 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
     "intervention", "main_category", "sub_category", "gbd_cause", "top20_dalys_flag"
   ), "Senegal HBP Tool - Top20 Causes")
 
-  # These columns are expected to be numeric, but a stray text value
-  # anywhere in the column (e.g. "N/A", "-", a leftover Excel error
-  # like "#N/A") makes readxl import the whole column as character.
-  # Force numeric here; any non-numeric text becomes NA (with a
-  # warning, suppressed here since it's expected/handled downstream
-  # as "no data").
   to_numeric <- function(x) suppressWarnings(as.numeric(x))
 
   master_list <- oht_case_data %>%
@@ -76,34 +82,37 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
 
   funnel <- master_list %>%
     left_join(top20_set, by = "intervention") %>%
-    left_join(effectiveness_table, by = "intervention") %>%
     left_join(cost_table, by = "intervention") %>%
+    left_join(effectiveness_table, by = "intervention") %>%
     mutate(
-      in_top20     = !is.na(main_category),
-      has_effect   = !is.na(dalys_final),
-      has_cost     = !is.na(unit_cost_final_usd),
-      has_demand   = !is.na(cases_full_2023) & cases_full_2023 > 0,
-      stage_excluded = case_when(
-        !in_top20   ~ "1_top20_causes",
-        !has_effect ~ "2_effectiveness",
-        !has_cost   ~ "3_cost",
-        !has_demand ~ "4_demand",
-        TRUE         ~ "0_included"
+      passed_1 = !is.na(main_category),
+      passed_2 = passed_1 & !is.na(unit_cost_final_usd),
+      passed_3 = passed_2 & !is.na(dalys_final),
+      passed_4 = passed_3 & !is.na(cases_full_2023),
+      step_excluded = case_when(
+        !passed_1 ~ 1L,
+        !passed_2 ~ 2L,
+        !passed_3 ~ 3L,
+        !passed_4 ~ 4L,
+        TRUE       ~ 0L
       ),
       reason_excluded = case_when(
-        stage_excluded == "1_top20_causes" ~
-          "Not linked to a Top-20-DALY-burden GBD cause (absent from 'Senegal HBP Tool - Top20 Causes')",
-        stage_excluded == "2_effectiveness" ~ coalesce(effectiveness_note, "No effectiveness data"),
-        stage_excluded == "3_cost"          ~ coalesce(cost_note, "No cost data"),
-        stage_excluded == "4_demand" & !is.na(target_2023) & target_2023 > 0 ~
-          "Target population is set in 'OHT Case data' but coverage/case volume is still 0 - scale-up data entry not yet completed",
-        stage_excluded == "4_demand"        ~ "No target population or case data in 'OHT Case data'",
-        TRUE                                  ~ NA_character_
+        step_excluded == 1 ~
+          "Not linked to a Top-20-DALY-burden GBD cause",
+        step_excluded == 2 ~ coalesce(cost_note, "No cost data"),
+        step_excluded == 3 ~ coalesce(effectiveness_note, "No effectiveness data"),
+        step_excluded == 4 ~ "No case-volume data available for this intervention",
+        TRUE                 ~ NA_character_
+      ),
+      no_target_population_flag = passed_1 & (is.na(target_2023) | target_2023 == 0),
+      zero_case_volume_flag = passed_4 & (
+        (!is.na(cases_full_2023) & cases_full_2023 == 0) |
+        (!is.na(coverage_2023) & coverage_2023 == 0)
       )
     )
 
   league_table <- funnel %>%
-    filter(stage_excluded == "0_included") %>%
+    filter(step_excluded == 0) %>%
     mutate(
       total_cost_realistic_usd  = unit_cost_final_usd * cases_scaleup_2023,
       total_dalys_realistic     = dalys_final * cases_scaleup_2023,
@@ -121,19 +130,71 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
     mutate(rank_nhp = row_number()) %>%
     select(
       rank_nhp, intervention, main_category, sub_category, gbd_cause,
-      net_dalys_full, net_dalys_realistic, diff_net_dalys, health_system_value_usd,
-      icer_usd, icer_rank,
-      effectiveness_status, dalys_final,
+      zero_case_volume_flag, no_target_population_flag,
+      effectiveness_status, dalys_final, title, primary_author, issue_year,
+      journal_name, publication_date, target_countries, comparator_modality,
+      time_horizon, perspective_author, costs_discounted, outcome_discounted,
+      total_quality_score,
       cost_status, unit_cost_final_usd,
       cases_scaleup_2023, cases_full_2023,
       total_cost_realistic_usd, total_dalys_realistic,
-      total_cost_full_usd, total_dalys_full
+      total_cost_full_usd, total_dalys_full,
+      icer_usd, icer_rank,
+      net_dalys_realistic, net_dalys_full, diff_net_dalys,
+      health_system_value_usd
     )
 
   funnel_log <- funnel %>%
+    mutate(step_label = step_labels[as.character(step_excluded)]) %>%
     select(intervention, main_category, sub_category,
-           in_top20, has_effect, has_cost, has_demand,
-           stage_excluded, reason_excluded)
+           step_excluded, step_label, reason_excluded,
+           no_target_population_flag, zero_case_volume_flag)
 
-  list(funnel_log = funnel_log, league_table = league_table)
+  n_total <- nrow(funnel)
+  funnel_summary <- lapply(1:4, function(s) {
+    n_entering <- sum(funnel$step_excluded == 0 | funnel$step_excluded >= s)
+    n_excluded <- sum(funnel$step_excluded == s)
+    data.frame(
+      step = s,
+      label = step_labels[[as.character(s)]],
+      n_entering = n_entering,
+      n_excluded = n_excluded,
+      n_passed = n_entering - n_excluded
+    )
+  }) %>% bind_rows()
+  funnel_summary <- bind_rows(
+    data.frame(step = 0, label = "Total interventions considered",
+               n_entering = n_total, n_excluded = 0, n_passed = n_total),
+    funnel_summary
+  )
+
+  step1_top20 <- funnel %>%
+    filter(passed_1) %>%
+    select(intervention, main_category, sub_category, gbd_cause, top20_dalys_flag)
+
+  step2_cost <- funnel %>%
+    filter(passed_2) %>%
+    select(intervention, main_category, sub_category,
+           cost_status, unit_cost_final_usd, cost_note)
+
+  step3_effectiveness <- funnel %>%
+    filter(passed_3) %>%
+    select(intervention, main_category, sub_category,
+           cost_status, unit_cost_final_usd,
+           effectiveness_status, dalys_final,
+           article_id, ratio_number, confidence,
+           title, primary_author, issue_year, journal_name, publication_date,
+           target_countries, comparator_modality,
+           time_horizon, perspective_author, costs_discounted, outcome_discounted,
+           total_quality_score,
+           effectiveness_note)
+
+  list(
+    funnel_log = funnel_log,
+    funnel_summary = funnel_summary,
+    step1_top20 = step1_top20,
+    step2_cost = step2_cost,
+    step3_effectiveness = step3_effectiveness,
+    league_table = league_table
+  )
 }

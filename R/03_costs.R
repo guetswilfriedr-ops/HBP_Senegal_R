@@ -1,19 +1,15 @@
 # ============================================================
 # Unit cost lookup
 #
-# Reconstructs the logic in 'Senegal HBP Tool - Top20 Causes'
-# columns AI/AJ/BG/BJ:
-#
-#   1. The workbook's own manual override point is column AJ,
-#      "Cost if manual input" (kept here as cost_manual_input_usd),
-#      filled in by the analyst when the OHT data has no cost for an
-#      intervention. To supply or change a manual cost, edit that
-#      column in 'Senegal HBP Tool - Top20 Causes' and re-run.
-#   2. Otherwise, use the unit cost already resolved in
-#      'OHT Drug supply costs' (column AK, "Final unit cost in $ per
-#      case in Senegal OHT") for that intervention.
+# For each intervention, the unit cost is resolved in this order:
+#   1. A manual entry ("Cost if manual input" in 'Senegal HBP Tool -
+#      Top20 Causes') - the point where an analyst supplies or
+#      overrides a cost directly, without needing to touch the costing
+#      sheet or this code. Fill it in and re-run.
+#   2. Otherwise, the unit cost already computed in 'OHT Drug supply
+#      costs' for that intervention.
 #   3. If neither is available, the intervention has no cost figure
-#      and cannot enter the league table (status = "Missing").
+#      and cannot proceed to the effectiveness step.
 # ============================================================
 
 library(dplyr)

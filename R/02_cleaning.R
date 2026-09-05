@@ -185,13 +185,36 @@ rename_id_ratio <- function(df) {
   ), sheet_label = "id_Ratio")
 }
 
-#' "Tufts_Ratios": cost-effectiveness literature database
+#' "Tufts_Ratios": cost-effectiveness literature database. Also carries
+#' the bibliographic fields (author, year, title, country, comparator)
+#' needed to document which study backs each retained DALY figure.
 rename_tufts_ratios <- function(df) {
   rename_at_position(df, list(
     article_id                = 2,  # B: Article ID
-    ratio_number                 = 18, # R: Ratio #
-    dalys_per_patient_delta         = 93  # CO: DALY Per Patient Delta
+    title                        = 3,  # C: Title
+    primary_author                  = 8,  # H: Primary Author
+    issue_year                         = 12, # L: Issue Year
+    ratio_number                          = 18, # R: Ratio #
+    target_countries                         = 21, # U: Target Countries
+    comparator_modality                         = 25, # Y: Comparator Modality
+    dalys_per_patient_delta                        = 93  # CO: DALY Per Patient Delta
   ), sheet_label = "Tufts_Ratios")
+}
+
+#' "Tufts_Methods": study-level methodology fields, one row per
+#' article (as opposed to Tufts_Ratios, one row per ratio within an
+#' article) - joined by article_id alone.
+rename_tufts_methods <- function(df) {
+  rename_at_position(df, list(
+    article_id            = 3,   # C: Article ID
+    journal_name             = 16,  # P: Journal Name
+    publication_date            = 15,  # O: Publication Date
+    costs_discounted                = 23,  # W: Costs Discounted
+    outcome_discounted                  = 25,  # Y: Outcome Discounted
+    perspective_author                     = 108, # DD: Perspective From Author
+    time_horizon                              = 152, # EV: Time Horizons
+    total_quality_score                          = 44   # AR: Total Quality Score
+  ), sheet_label = "Tufts_Methods")
 }
 
 #' "Uganda HBP Tool": fallback DALYs-averted/patient
@@ -224,6 +247,7 @@ rename_overrides <- list(
   "Senegal HBP Tool - Top20 Causes"         = rename_top20_causes,
   "id_Ratio"                                  = rename_id_ratio,
   "Tufts_Ratios"                                 = rename_tufts_ratios,
+  "Tufts_Methods"                                = rename_tufts_methods,
   "Uganda HBP Tool"                                 = rename_uganda_hbp,
   "OHT Int name mapping recent-old"                    = rename_name_mapping
 )
