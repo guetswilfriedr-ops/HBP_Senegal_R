@@ -247,6 +247,32 @@ build_table4_icer_ranking <- function(league_table) {
     )
 }
 
+#' Table 5 equivalent: every intervention that reached the league
+#' table, ranked by net health benefit (full implementation) rather
+#' than by ICER - unlike Table 6, this is not restricted to the
+#' affordable core package, so an intervention whose cost outweighs
+#' its health opportunity cost still appears here, with a negative net
+#' DALYs averted
+#'
+#' @param league_table Output of build_intervention_funnel()$league_table
+#' @return A data frame, in English column names, ready to write with
+#'   write_xlsx_sheet() (no further relabelling needed)
+build_table5_net_benefit_ranking <- function(league_table) {
+  league_table %>%
+    arrange(rank_nhp) %>%
+    transmute(
+      `#`                                          = rank_nhp,
+      `Intervention`                                 = intervention,
+      `ICER [$]`                                      = icer_usd,
+      `DALYs averted per $1,000`                       = dalys_per_1000usd,
+      `Cases per annum`                                 = cases_full_2023,
+      `Total cost (full implementation) [$]`             = total_cost_full_usd,
+      `Cumulative cost [$]`                               = cumulative_cost_full_usd,
+      `Total DALYs averted (full implementation)`          = total_dalys_full,
+      `Net DALYs averted (full implementation)`             = net_dalys_full
+    )
+}
+
 #' Table 6 equivalent: interventions included in the affordable core
 #' package (ICER at or below the CET), ranked by net health benefit,
 #' with the impact on overall population health (net DALYs averted)

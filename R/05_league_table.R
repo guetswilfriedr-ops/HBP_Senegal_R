@@ -62,7 +62,8 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
     "coverage_2023", "cases_scaleup_2023", "cases_full_2023"
   ), "OHT Case data")
   top20_causes <- ensure_columns(top20_causes, c(
-    "intervention", "main_category", "sub_category", "gbd_cause", "top20_dalys_flag"
+    "intervention", "main_category", "sub_category", "gbd_cause", "top20_dalys_flag",
+    "pct_dalys_lost"
   ), "Senegal HBP Tool - Top20 Causes")
 
   to_numeric <- function(x) suppressWarnings(as.numeric(x))
@@ -78,7 +79,7 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
 
   top20_set <- top20_causes %>%
     distinct(intervention, .keep_all = TRUE) %>%
-    select(intervention, main_category, sub_category, gbd_cause, top20_dalys_flag)
+    select(intervention, main_category, sub_category, gbd_cause, top20_dalys_flag, pct_dalys_lost)
 
   funnel <- master_list %>%
     left_join(top20_set, by = "intervention") %>%
@@ -137,7 +138,7 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
       cumulative_cost_realistic_usd = cumsum(coalesce(total_cost_realistic_usd, 0))
     ) %>%
     select(
-      rank_nhp, intervention, main_category, sub_category, gbd_cause,
+      rank_nhp, intervention, main_category, sub_category, gbd_cause, pct_dalys_lost,
       zero_case_volume_flag, no_target_population_flag,
       effectiveness_status, dalys_final, title, primary_author, issue_year,
       journal_name, publication_date, target_countries, comparator_modality,
@@ -155,7 +156,7 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
 
   funnel_log <- funnel %>%
     mutate(step_label = step_labels[as.character(step_excluded)]) %>%
-    select(intervention, main_category, sub_category,
+    select(intervention, main_category, sub_category, gbd_cause, pct_dalys_lost,
            step_excluded, step_label, reason_excluded,
            no_target_population_flag, zero_case_volume_flag)
 
@@ -179,16 +180,16 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
 
   step1_top20 <- funnel %>%
     filter(passed_1) %>%
-    select(intervention, main_category, sub_category, gbd_cause, top20_dalys_flag)
+    select(intervention, main_category, sub_category, gbd_cause, pct_dalys_lost, top20_dalys_flag)
 
   step2_cost <- funnel %>%
     filter(passed_2) %>%
-    select(intervention, main_category, sub_category,
+    select(intervention, main_category, sub_category, gbd_cause, pct_dalys_lost,
            cost_status, unit_cost_final_usd, cost_note)
 
   step3_effectiveness <- funnel %>%
     filter(passed_3) %>%
-    select(intervention, main_category, sub_category,
+    select(intervention, main_category, sub_category, gbd_cause, pct_dalys_lost,
            cost_status, unit_cost_final_usd,
            effectiveness_status, dalys_final,
            article_id, ratio_number, confidence,
@@ -198,12 +199,56 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
            total_quality_score,
            effectiveness_note)
 
+  step4_case_volume <- funnel %>%
+    filter(passed_4) %>%
+    select(intervention, main_category, sub_category, gbd_cause, pct_dalys_lost,
+           cost_status, unit_cost_final_usd,
+           effectiveness_status, dalys_final,
+           cases_scaleup_2023, cases_full_2023,
+           no_target_population_flag, zero_case_volume_flag)
+
+  # Category / sub-category / GBD-cause distribution of the 389
+  # master-list interventions, compared before the funnel (every
+  # intervention considered) and after it (only those that reached the
+  # league table) - so a reader can see how each grouping's weight
+  # shifts through the funnel, alongside the disease burden (%DALYs)
+  # each GBD cause represents.
+  bucket_na <- function(x) coalesce(x, "(not linked to a Top-20-DALY-burden GBD cause)")
+
+  category_counts <- funnel %>%
+    mutate(main_category = bucket_na(main_category)) %>%
+    group_by(main_category) %>%
+    summarise(n_master_list = n(), n_league_table = sum(step_excluded == 0), .groups = "drop") %>%
+    transmute(level = "Category", name = main_category, n_master_list, n_league_table, pct_dalys_lost = NA_real_)
+
+  sub_category_counts <- funnel %>%
+    filter(!is.na(main_category)) %>%
+    mutate(sub_category = bucket_na(sub_category)) %>%
+    group_by(sub_category) %>%
+    summarise(n_master_list = n(), n_league_table = sum(step_excluded == 0), .groups = "drop") %>%
+    transmute(level = "Sub-category", name = sub_category, n_master_list, n_league_table, pct_dalys_lost = NA_real_)
+
+  cause_counts <- funnel %>%
+    filter(!is.na(gbd_cause)) %>%
+    group_by(gbd_cause) %>%
+    summarise(
+      n_master_list = n(), n_league_table = sum(step_excluded == 0),
+      pct_dalys_lost = dplyr::first(pct_dalys_lost),
+      .groups = "drop"
+    ) %>%
+    arrange(desc(pct_dalys_lost)) %>%
+    transmute(level = "GBD cause", name = gbd_cause, n_master_list, n_league_table, pct_dalys_lost)
+
+  category_summary <- bind_rows(category_counts, sub_category_counts, cause_counts)
+
   list(
     funnel_log = funnel_log,
     funnel_summary = funnel_summary,
     step1_top20 = step1_top20,
     step2_cost = step2_cost,
     step3_effectiveness = step3_effectiveness,
+    step4_case_volume = step4_case_volume,
+    category_summary = category_summary,
     league_table = league_table
   )
 }

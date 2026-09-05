@@ -112,6 +112,7 @@ league_table_display_columns <- c(
   main_category                  = "Category",
   sub_category                   = "Sub-category",
   gbd_cause                      = "GBD cause",
+  pct_dalys_lost                 = "GBD cause, % of total DALYs",
   cost_status                    = "Cost source",
   icer_usd                       = "ICER ($)",
   icer_rank                      = "Rank (ICER)",
@@ -150,6 +151,7 @@ add_league_table_sheet <- function(wb, league_table, sheet_name = "League table"
     ),
     decimal_cols = c(
       "ICER ($)", "DALYs averted per $1,000", "Implementation level (%)",
+      "GBD cause, % of total DALYs",
       "Total DALYs averted, full implementation", "Total DALYs averted, realistic implementation",
       "Net DALYs averted, full implementation", "Net DALYs averted, realistic implementation",
       "Difference in net DALYs averted"
@@ -184,7 +186,11 @@ extra_display_labels <- c(
   scenario                 = "CET scenario",
   cet_usd_per_daly         = "CET ($ per DALY averted)",
   n_included               = "N interventions affordable",
-  total_net_dalys_full     = "Total net DALYs averted"
+  total_net_dalys_full     = "Total net DALYs averted",
+  level                    = "Grouping level",
+  name                     = "Category / sub-category / GBD cause",
+  n_master_list            = "N in master list (389 interventions)",
+  n_league_table           = "N in league table"
 )
 
 column_labels <- c(league_table_display_columns, extra_display_labels)
