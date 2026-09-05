@@ -2,17 +2,40 @@
 # DCEA Method Stage 1: distributional impact of interventions
 #
 # Reproduces the Box 1 worked example of Arnold, Nkhoma & Griffin
-# (2020) for every intervention in the Senegal league table at once:
+# (2020) for every intervention in the Senegal league table at once -
+# WITH ONE ADAPTATION, explained below.
 #
-#   eligible_q  = cases * D_q                  (D = disease/eligibility
-#                                                 share by quintile, tab 2)
-#   treated_q   = eligible_q * E_q             (E = coverage/uptake
-#                                                 rate by quintile, tab 3)
+# Arnold et al.'s "A" (total eligible population) is a raw disease-
+# burden denominator, independent of how many people actually get
+# treated - so their D (disease share) and E (uptake rate) apply as
+# two SEQUENTIAL filters: eligible = A * D, treated = eligible * E.
+#
+# Our league table's `cases_full_2023` / `cases_scaleup_2023` are NOT
+# that: they are the OHT model's own already-coverage-adjusted case
+# volumes (the number of people the intervention is modelled to reach
+# at a given implementation scenario), and `total_dalys_full` /
+# `net_dalys_full` in the league table are computed directly from
+# them. Applying D and E as sequential filters on top of an already-
+# coverage-adjusted number would double-count coverage and understate
+# every intervention's benefit relative to the (already validated)
+# league table.
+#
+# So here, D and E are combined into a single per-quintile WEIGHT,
+# normalized to sum to 1 across quintiles, and used to REDISTRIBUTE
+# the league table's own case volume - not to shrink it:
+#
+#   weight_q = (D_q * E_q) / sum_q(D_q * E_q)
+#   treated_q = cases * weight_q
 #   direct_benefit_q   = treated_q * dalys_per_patient
 #   opportunity_cost_q = F_q * (total_cost / opportunity_cost_usd_per_daly)
-#                                               (F = national opportunity-
-#                                                cost share, tab 4)
 #   net_benefit_q = direct_benefit_q - opportunity_cost_q
+#
+# This guarantees sum_q(direct_benefit_q) == total_dalys_full and
+# sum_q(net_benefit_q) == net_dalys_full exactly (when
+# opportunity_cost_usd_per_daly equals the league table's own CET) -
+# i.e. the DCEA distribution always reconciles with the league table
+# it is built from; D and E only ever decide HOW an already-fixed
+# total is shared between quintiles, never how large that total is.
 #
 # Computed for both the "full implementation" and "realistic
 # implementation" case-volume scenarios already in the league table
@@ -84,23 +107,31 @@ build_dcea_distribution <- function(league_table, interventions_mapped, d_table,
     left_join(d_long, by = c("gbd_cause" = "cause_gbd", "quintile")) %>%
     left_join(e_long, by = c("e_indicator_id" = "indicator_id", "quintile")) %>%
     left_join(f_long, by = "quintile") %>%
+    group_by(intervention) %>%
     mutate(
       d_share = d_share_pct / 100,
       e_rate  = e_rate_pct / 100,
       f_share = f_share_pct / 100,
 
+      # Combined D*E weight, normalized across quintiles within each
+      # intervention (see file header comment for why this replaces
+      # Arnold et al.'s sequential eligible->treated filtering)
+      de_raw = d_share * e_rate,
+      de_weight = ifelse(rep(sum(de_raw, na.rm = TRUE) > 0, n()), de_raw / sum(de_raw, na.rm = TRUE), NA_real_),
+
       population_eligible = cases_full_2023 * d_share,
-      population_treated  = population_eligible * e_rate,
+      population_treated  = cases_full_2023 * de_weight,
       direct_benefit       = population_treated * dalys_final,
       opportunity_cost      = f_share * (total_cost_full_usd / opportunity_cost_usd_per_daly),
       net_benefit            = direct_benefit - opportunity_cost,
 
       population_eligible_realistic = cases_scaleup_2023 * d_share,
-      population_treated_realistic  = population_eligible_realistic * e_rate,
+      population_treated_realistic  = cases_scaleup_2023 * de_weight,
       direct_benefit_realistic       = population_treated_realistic * dalys_final,
       opportunity_cost_realistic      = f_share * (total_cost_realistic_usd / opportunity_cost_usd_per_daly),
       net_benefit_realistic            = direct_benefit_realistic - opportunity_cost_realistic
     ) %>%
+    ungroup() %>%
     select(
       intervention, main_category, sub_category, gbd_cause,
       e_indicator_id, e_indicator_source, quintile,

@@ -15,10 +15,20 @@
 #
 # An intervention's impact on inequality is then:
 #   delta_ede = EDE(baseline + net_benefit_per_capita) - EDE(baseline)
-#   inequality_impact = delta_ede - total_net_health_benefit
+#   inequality_impact = delta_ede * population - total_net_health_benefit
+# delta_ede is a PER-CAPITA quantity (same units as baseline HALE:
+# years per person), while total_net_health_benefit is a POPULATION-
+# TOTAL quantity (DALYs summed over everyone) - so delta_ede must be
+# scaled up by the total population before the two are compared, per
+# Arnold et al.'s own worked example (baseline EDE HALE vs average
+# HALE differ by "0.24 DALYs per person"; scaled by total population,
+# this becomes the multi-hundred-thousand to million-DALY "cost of
+# inequality" figures in their Table 2). One healthy life year gained
+# is treated as equivalent to one DALY averted, as throughout this
+# literature.
 # A positive inequality_impact means the intervention reduces health
-# inequality (its EDE gain exceeds its raw population health gain);
-# negative means it increases inequality.
+# inequality (its (population-scaled) EDE gain exceeds its raw
+# population health gain); negative means it increases inequality.
 # ============================================================
 
 library(dplyr)
@@ -109,7 +119,7 @@ compute_equity_metrics <- function(distribution, baseline_hale, national_populat
     mutate(
       post_ede = atkinson_ede(unlist(post_hale), epsilon = epsilon),
       delta_ede = post_ede - baseline_ede,
-      inequality_impact = delta_ede - total_net_benefit,
+      inequality_impact = delta_ede * national_population - total_net_benefit,
       quadrant = case_when(
         is.na(total_net_benefit) | is.na(inequality_impact) ~ NA_character_,
         total_net_benefit >= 0 & inequality_impact >= 0 ~ "++",
@@ -164,6 +174,6 @@ compute_package_equity <- function(distribution, baseline_hale, national_populat
     baseline_ede = baseline_ede,
     post_ede = post_ede,
     delta_ede = post_ede - baseline_ede,
-    inequality_impact = (post_ede - baseline_ede) - total_net_benefit
+    inequality_impact = (post_ede - baseline_ede) * national_population - total_net_benefit
   )
 }

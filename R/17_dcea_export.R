@@ -146,10 +146,10 @@ export_dcea_tables <- function(distribution, quintile_summary, equity_metrics,
   write_xlsx_sheet(wb, "Package equity summary", prettify_dcea_names(package_equity), freeze_col = 0)
   write_xlsx_sheet(wb, "Sensitivity analysis", prettify_dcea_names(sensitivity_table), freeze_col = 1)
   write_xlsx_sheet(
-    wb, "Table S4 style - population dist.", build_table_s4_style(distribution, league_table), freeze_col = 2
+    wb, "Table S4 style - population", build_table_s4_style(distribution, league_table), freeze_col = 2
   )
   write_xlsx_sheet(
-    wb, "Table S5 style - EDE ranking", build_table_s5_style(equity_metrics, league_table), freeze_col = 2
+    wb, "Table S5 style - EDE rank", build_table_s5_style(equity_metrics, league_table), freeze_col = 2
   )
   save_xlsx(wb, "dcea_results", output_dir)
 }
