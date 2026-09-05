@@ -8,6 +8,7 @@
 # ============================================================
 
 library(openxlsx)
+library(dplyr)
 
 dcea_display_labels <- c(
   intervention              = "Intervention",
@@ -16,7 +17,8 @@ dcea_display_labels <- c(
   gbd_cause                 = "GBD cause",
   e_indicator_id            = "Coverage indicator used",
   e_indicator_source        = "Indicator source (manual/sub_category/main_category/fallback)",
-  quintile                  = "Wealth quintile",
+  group_type                = "Stratifier (wealth quintile / residence)",
+  group_id                  = "Group",
   d_share                   = "Disease/eligibility share",
   e_rate                    = "Coverage/uptake rate",
   f_share                   = "Opportunity-cost share",
@@ -31,7 +33,7 @@ dcea_display_labels <- c(
   opportunity_cost_realistic    = "Opportunity cost (DALYs, realistic implementation)",
   net_benefit_realistic         = "Net benefit (DALYs, realistic implementation)",
   total_net_benefit         = "Total net health benefit (DALYs)",
-  delta_ede                 = "Change in EDE health (DALY-equivalent)",
+  delta_ede                 = "Change in EDE health, per capita (years)",
   inequality_impact         = "Inequality impact (DALYs averted-equivalent)",
   quadrant                  = "Equity-plane quadrant",
   baseline_ede              = "Baseline EDE (years)",
@@ -61,18 +63,16 @@ prettify_dcea_names <- function(df) {
 }
 
 #' Table S4-style export: per-intervention population distribution by
-#' quintile (eligible and treated population, in thousands and as a
-#' % share), alongside the incremental benefit/cost figures - the
+#' WEALTH QUINTILE (eligible and treated population, in thousands and
+#' as a % share), alongside the incremental benefit/cost figures - the
 #' Senegal equivalent of Arnold et al.'s Supplementary Table S4
 #'
 #' @param distribution Output of build_dcea_distribution() (R/12)
 #' @param league_table Output of build_intervention_funnel()$league_table
 #' @return One row per intervention, wide-format by quintile
 build_table_s4_style <- function(distribution, league_table) {
-  quintile_ids <- c("q1", "q2", "q3", "q4", "q5")
-  quintile_labels <- c(q1 = "Poorest", q2 = "Poorer", q3 = "Middle", q4 = "Richer", q5 = "Richest")
-
   wide <- distribution %>%
+    filter(.data$group_type == "wealth") %>%
     group_by(intervention) %>%
     mutate(
       eligible_thousands = population_eligible / 1000,
@@ -81,13 +81,13 @@ build_table_s4_style <- function(distribution, league_table) {
       users_share_pct = population_treated / sum(population_treated, na.rm = TRUE) * 100
     ) %>%
     ungroup() %>%
-    mutate(quintile = unname(quintile_labels[quintile])) %>%
-    select(intervention, main_category, sub_category, quintile,
+    mutate(group_id = unname(wealth_group_labels[group_id])) %>%
+    select(intervention, main_category, sub_category, group_id,
            eligible_thousands, eligible_share_pct, users_thousands, users_share_pct) %>%
     tidyr::pivot_wider(
-      names_from = quintile,
+      names_from = group_id,
       values_from = c(eligible_thousands, eligible_share_pct, users_thousands, users_share_pct),
-      names_glue = "{.value}_{quintile}"
+      names_glue = "{.value}_{group_id}"
     )
 
   league_table %>%
@@ -103,7 +103,7 @@ build_table_s4_style <- function(distribution, league_table) {
 #' Senegal equivalent of Arnold et al.'s Supplementary Table S5
 #'
 #' @param equity_metrics The `per_intervention` element of
-#'   compute_equity_metrics()'s output (R/14)
+#'   compute_equity_metrics()'s output (R/14), for ONE group_type
 #' @param league_table Output of build_intervention_funnel()$league_table
 #'   (supplies the ICER-based cost-effectiveness rank)
 #' @return One row per intervention, ranked by delta_ede (descending)
@@ -119,37 +119,56 @@ build_table_s5_style <- function(equity_metrics, league_table) {
     rename(rank_cost_effectiveness = icer_rank)
 }
 
-#' Write every DCEA table (distribution, quintile summary,
-#' per-intervention equity metrics, package equity, sensitivity table,
-#' and the Table S4/S5-style supplementary exports) to one formatted
-#' workbook: output/tables/dcea_results.xlsx
+#' Write every DCEA table - distribution, per-stratifier group
+#' summaries, per-stratifier equity planes, per-stratifier package
+#' equity, sensitivity table, and the Table S4/S5-style supplementary
+#' exports (wealth quintile only, as in the paper's own appendix) - to
+#' one formatted workbook: output/tables/dcea_results.xlsx
 #'
-#' @param distribution Output of build_dcea_distribution() (R/12)
-#' @param quintile_summary Output of aggregate_dcea_by_quintile() (R/12)
-#' @param equity_metrics The `per_intervention` element of
-#'   compute_equity_metrics()'s output (R/14)
-#' @param package_equity Output of compute_package_equity() (R/14)
+#' @param distribution Output of build_dcea_distribution() (R/12) -
+#'   contains BOTH stratifiers, tagged by group_type
+#' @param wealth_summary,residence_summary Output of
+#'   aggregate_dcea_by_group() for group_type "wealth"/"residence" (R/12)
+#' @param wealth_equity,residence_equity The `per_intervention` element
+#'   of compute_equity_metrics() for each group_type (R/14)
+#' @param wealth_package_equity,residence_package_equity Output of
+#'   compute_package_equity() for each group_type (R/14)
 #' @param sensitivity_table Output of build_dcea_sensitivity_table() (R/15)
 #' @param league_table Output of build_intervention_funnel()$league_table,
 #'   needed to build the Table S4/S5-style sheets
 #' @param output_dir config$output_tables_dir
-export_dcea_tables <- function(distribution, quintile_summary, equity_metrics,
-                                package_equity, sensitivity_table, league_table, output_dir) {
+export_dcea_tables <- function(distribution, wealth_summary, residence_summary,
+                                wealth_equity, residence_equity,
+                                wealth_package_equity, residence_package_equity,
+                                sensitivity_table, league_table, output_dir) {
   wb <- createWorkbook()
   write_xlsx_sheet(wb, "Distribution by intervention", prettify_dcea_names(distribution), freeze_col = 4)
-  write_xlsx_sheet(wb, "Quintile summary", prettify_dcea_names(quintile_summary), freeze_col = 1)
+  write_xlsx_sheet(wb, "Wealth quintile summary", prettify_dcea_names(wealth_summary), freeze_col = 1)
+  write_xlsx_sheet(wb, "Residence summary", prettify_dcea_names(residence_summary), freeze_col = 1)
   write_xlsx_sheet(
-    wb, "Equity plane (per intervention)", prettify_dcea_names(equity_metrics), freeze_col = 1,
-    decimal_cols = c("Total net health benefit (DALYs)", "Change in EDE health (DALY-equivalent)",
+    wb, "Equity plane - wealth", prettify_dcea_names(wealth_equity), freeze_col = 1,
+    decimal_cols = c("Total net health benefit (DALYs)", "Change in EDE health, per capita (years)",
                       "Inequality impact (DALYs averted-equivalent)")
   )
-  write_xlsx_sheet(wb, "Package equity summary", prettify_dcea_names(package_equity), freeze_col = 0)
-  write_xlsx_sheet(wb, "Sensitivity analysis", prettify_dcea_names(sensitivity_table), freeze_col = 1)
+  write_xlsx_sheet(
+    wb, "Equity plane - residence", prettify_dcea_names(residence_equity), freeze_col = 1,
+    decimal_cols = c("Total net health benefit (DALYs)", "Change in EDE health, per capita (years)",
+                      "Inequality impact (DALYs averted-equivalent)")
+  )
+  write_xlsx_sheet(
+    wb, "Package equity summary",
+    prettify_dcea_names(bind_rows(
+      cbind(data.frame(stratifier = "wealth"), wealth_package_equity),
+      cbind(data.frame(stratifier = "residence"), residence_package_equity)
+    )),
+    freeze_col = 1
+  )
+  write_xlsx_sheet(wb, "Sensitivity analysis (wealth)", prettify_dcea_names(sensitivity_table), freeze_col = 1)
   write_xlsx_sheet(
     wb, "Table S4 style - population", build_table_s4_style(distribution, league_table), freeze_col = 2
   )
   write_xlsx_sheet(
-    wb, "Table S5 style - EDE rank", build_table_s5_style(equity_metrics, league_table), freeze_col = 2
+    wb, "Table S5 style - EDE rank", build_table_s5_style(wealth_equity, league_table), freeze_col = 2
   )
   save_xlsx(wb, "dcea_results", output_dir)
 }

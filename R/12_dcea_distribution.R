@@ -2,8 +2,9 @@
 # DCEA Method Stage 1: distributional impact of interventions
 #
 # Reproduces the Box 1 worked example of Arnold, Nkhoma & Griffin
-# (2020) for every intervention in the Senegal league table at once -
-# WITH ONE ADAPTATION, explained below.
+# (2020) for every intervention in the Senegal league table, for BOTH
+# equity-relevant stratifiers they use: wealth quintile (q1..q5) and
+# residence (urban/rural) - WITH ONE ADAPTATION, explained below.
 #
 # Arnold et al.'s "A" (total eligible population) is a raw disease-
 # burden denominator, independent of how many people actually get
@@ -20,22 +21,23 @@
 # every intervention's benefit relative to the (already validated)
 # league table.
 #
-# So here, D and E are combined into a single per-quintile WEIGHT,
-# normalized to sum to 1 across quintiles, and used to REDISTRIBUTE
-# the league table's own case volume - not to shrink it:
+# So here, D and E are combined into a single per-group WEIGHT,
+# normalized to sum to 1 across the groups of a given stratifier
+# (quintiles, or residence), and used to REDISTRIBUTE the league
+# table's own case volume - not to shrink it:
 #
-#   weight_q = (D_q * E_q) / sum_q(D_q * E_q)
-#   treated_q = cases * weight_q
-#   direct_benefit_q   = treated_q * dalys_per_patient
-#   opportunity_cost_q = F_q * (total_cost / opportunity_cost_usd_per_daly)
-#   net_benefit_q = direct_benefit_q - opportunity_cost_q
+#   weight_g = (D_g * E_g) / sum_g(D_g * E_g)
+#   treated_g = cases * weight_g
+#   direct_benefit_g   = treated_g * dalys_per_patient
+#   opportunity_cost_g = F_g * (total_cost / opportunity_cost_usd_per_daly)
+#   net_benefit_g = direct_benefit_g - opportunity_cost_g
 #
-# This guarantees sum_q(direct_benefit_q) == total_dalys_full and
-# sum_q(net_benefit_q) == net_dalys_full exactly (when
-# opportunity_cost_usd_per_daly equals the league table's own CET) -
-# i.e. the DCEA distribution always reconciles with the league table
-# it is built from; D and E only ever decide HOW an already-fixed
-# total is shared between quintiles, never how large that total is.
+# This guarantees sum_g(direct_benefit_g) == total_dalys_full and
+# sum_g(net_benefit_g) == net_dalys_full exactly (when
+# opportunity_cost_usd_per_daly equals the league table's own CET),
+# FOR EACH STRATIFIER SEPARATELY - i.e. the wealth-quintile view and
+# the residence view are two different ways of slicing the exact same
+# intervention total, not two different totals.
 #
 # Computed for both the "full implementation" and "realistic
 # implementation" case-volume scenarios already in the league table
@@ -46,28 +48,23 @@
 library(dplyr)
 library(tidyr)
 
-quintile_ids <- c("q1", "q2", "q3", "q4", "q5")
-
-#' Build the long-format (intervention x quintile) distributional
-#' impact table for every intervention in the league table
+#' Build the long-format (intervention x group) distributional impact
+#' table for one stratifier (wealth quintile or residence)
 #'
 #' @param league_table Output of build_intervention_funnel()$league_table
-#'   (R/05_league_table.R)
 #' @param interventions_mapped Output of assign_e_indicator()
-#'   (R/11_dcea_mapping.R)
-#' @param d_table Output of read_dcea_prep()$d_table
-#' @param e_table Output of read_dcea_prep()$e_table
-#' @param f_row Output of read_dcea_prep()$f_row
-#' @param opportunity_cost_usd_per_daly Output of
-#'   resolve_opportunity_cost_rate() (R/10_dcea_import.R)
-#' @return One row per intervention x quintile, with:
-#'   d_share, e_rate, f_share (as proportions, 0-1)
-#'   population_eligible/_treated, direct_benefit, opportunity_cost,
-#'   net_benefit - each computed for both the full-implementation
-#'   scenario (no suffix) and the realistic-implementation scenario
-#'   (_realistic suffix)
-build_dcea_distribution <- function(league_table, interventions_mapped, d_table, e_table, f_row,
-                                     opportunity_cost_usd_per_daly) {
+#' @param d_table,e_table,f_row Output of read_dcea_prep()
+#' @param opportunity_cost_usd_per_daly Output of resolve_opportunity_cost_rate()
+#' @param group_ids Character vector of column-name suffixes for this
+#'   stratifier (wealth_group_ids or residence_group_ids, R/10)
+#' @param group_type_label "wealth" or "residence" - tagged onto every
+#'   output row so a downstream filter(group_type == ...) can pick one
+#'   stratifier's rows out of the combined table
+#' @return One row per intervention x group, tagged with group_type
+build_dcea_distribution_for_stratifier <- function(league_table, interventions_mapped,
+                                                     d_table, e_table, f_row,
+                                                     opportunity_cost_usd_per_daly,
+                                                     group_ids, group_type_label) {
 
   intervention_lookup <- interventions_mapped %>%
     select(intervention = intervention_en, e_indicator_id, e_indicator_source)
@@ -92,30 +89,30 @@ build_dcea_distribution <- function(league_table, interventions_mapped, d_table,
   }
 
   d_long <- d_table %>%
-    select(cause_gbd, all_of(quintile_ids)) %>%
-    pivot_longer(all_of(quintile_ids), names_to = "quintile", values_to = "d_share_pct")
+    select(cause_gbd, all_of(group_ids)) %>%
+    pivot_longer(all_of(group_ids), names_to = "group_id", values_to = "d_share_pct")
 
   e_long <- e_table %>%
-    select(indicator_id, all_of(quintile_ids)) %>%
-    pivot_longer(all_of(quintile_ids), names_to = "quintile", values_to = "e_rate_pct")
+    select(indicator_id, all_of(group_ids)) %>%
+    pivot_longer(all_of(group_ids), names_to = "group_id", values_to = "e_rate_pct")
 
   f_long <- f_row %>%
-    select(all_of(quintile_ids)) %>%
-    pivot_longer(everything(), names_to = "quintile", values_to = "f_share_pct")
+    select(all_of(group_ids)) %>%
+    pivot_longer(everything(), names_to = "group_id", values_to = "f_share_pct")
 
-  crossing(lt, quintile = quintile_ids) %>%
-    left_join(d_long, by = c("gbd_cause" = "cause_gbd", "quintile")) %>%
-    left_join(e_long, by = c("e_indicator_id" = "indicator_id", "quintile")) %>%
-    left_join(f_long, by = "quintile") %>%
+  crossing(lt, group_id = group_ids) %>%
+    left_join(d_long, by = c("gbd_cause" = "cause_gbd", "group_id")) %>%
+    left_join(e_long, by = c("e_indicator_id" = "indicator_id", "group_id")) %>%
+    left_join(f_long, by = "group_id") %>%
     group_by(intervention) %>%
     mutate(
+      group_type = group_type_label,
       d_share = d_share_pct / 100,
       e_rate  = e_rate_pct / 100,
       f_share = f_share_pct / 100,
 
-      # Combined D*E weight, normalized across quintiles within each
-      # intervention (see file header comment for why this replaces
-      # Arnold et al.'s sequential eligible->treated filtering)
+      # Combined D*E weight, normalized across this stratifier's
+      # groups within each intervention (see file header comment)
       de_raw = d_share * e_rate,
       de_weight = ifelse(rep(sum(de_raw, na.rm = TRUE) > 0, n()), de_raw / sum(de_raw, na.rm = TRUE), NA_real_),
 
@@ -134,7 +131,7 @@ build_dcea_distribution <- function(league_table, interventions_mapped, d_table,
     ungroup() %>%
     select(
       intervention, main_category, sub_category, gbd_cause,
-      e_indicator_id, e_indicator_source, quintile,
+      e_indicator_id, e_indicator_source, group_type, group_id,
       d_share, e_rate, f_share,
       population_eligible, population_treated, direct_benefit, opportunity_cost, net_benefit,
       population_eligible_realistic, population_treated_realistic,
@@ -142,25 +139,50 @@ build_dcea_distribution <- function(league_table, interventions_mapped, d_table,
     )
 }
 
+#' Build the combined distributional impact table for BOTH stratifiers
+#' (wealth quintile and residence) at once
+#'
+#' @inheritParams build_dcea_distribution_for_stratifier
+#' @return Rows for every intervention x quintile AND every
+#'   intervention x residence group, distinguished by `group_type`
+build_dcea_distribution <- function(league_table, interventions_mapped, d_table, e_table, f_row,
+                                     opportunity_cost_usd_per_daly) {
+  wealth <- build_dcea_distribution_for_stratifier(
+    league_table, interventions_mapped, d_table, e_table, f_row,
+    opportunity_cost_usd_per_daly, wealth_group_ids, "wealth"
+  )
+  residence <- build_dcea_distribution_for_stratifier(
+    league_table, interventions_mapped, d_table, e_table, f_row,
+    opportunity_cost_usd_per_daly, residence_group_ids, "residence"
+  )
+  bind_rows(wealth, residence)
+}
+
 #' Aggregate the distributional impact across every intervention, by
-#' quintile - the Senegal equivalent of Arnold et al.'s Table 1 /
-#' Figure 3b/3d (direct benefit, opportunity cost, net benefit, per
-#' quintile, summed over the whole modelled set of interventions)
+#' group, for one stratifier - the Senegal equivalent of Arnold et
+#' al.'s Table 1 / Figure 3 (direct benefit, opportunity cost, net
+#' benefit, per group, summed over the whole modelled set of
+#' interventions)
 #'
 #' @param distribution Output of build_dcea_distribution()
+#' @param group_type "wealth" or "residence"
 #' @param interventions Optionally restrict to a subset of intervention
 #'   names (e.g. only those affordable at the reference CET, from
 #'   build_affordability_table() in R/09_ochalek_analysis.R). NULL (the
 #'   default) uses every intervention in `distribution`.
-#' @return One row per quintile, with total direct_benefit,
+#' @return One row per group, with total direct_benefit,
 #'   opportunity_cost and net_benefit for both the full and realistic
 #'   implementation scenarios
-aggregate_dcea_by_quintile <- function(distribution, interventions = NULL) {
+aggregate_dcea_by_group <- function(distribution, group_type = c("wealth", "residence"), interventions = NULL) {
+  group_type <- match.arg(group_type)
+  group_ids <- if (group_type == "wealth") wealth_group_ids else residence_group_ids
+
+  df <- distribution %>% filter(.data$group_type == !!group_type)
   if (!is.null(interventions)) {
-    distribution <- distribution %>% filter(intervention %in% interventions)
+    df <- df %>% filter(intervention %in% interventions)
   }
-  distribution %>%
-    group_by(quintile) %>%
+  df %>%
+    group_by(group_id) %>%
     summarise(
       direct_benefit = sum(direct_benefit, na.rm = TRUE),
       opportunity_cost = sum(opportunity_cost, na.rm = TRUE),
@@ -170,5 +192,5 @@ aggregate_dcea_by_quintile <- function(distribution, interventions = NULL) {
       net_benefit_realistic = sum(net_benefit_realistic, na.rm = TRUE),
       .groups = "drop"
     ) %>%
-    arrange(match(quintile, quintile_ids))
+    arrange(match(group_id, group_ids))
 }

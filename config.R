@@ -116,12 +116,21 @@ config <- list(
     # year) before treating baseline HALE figures as reliable.
     national_hale_years = 58,
 
-    # PLACEHOLDER - verify against ANSD / RGPH-5 (2023) before
-    # treating absolute (non-relative) figures as reliable. Only
-    # affects the denominator used to turn total net benefit into a
-    # per-capita figure for the Atkinson/EDE calculation; the
+    # Sourced from the workbook's own 'Population' sheet (Senegal,
+    # 2023, all ages, both sexes) - see cleaned_data[["Population"]].
+    # Only affects the denominator used to turn total net benefit into
+    # a per-capita figure for the Atkinson/EDE calculation; the
     # league-table DALY totals themselves do not depend on it.
-    national_population = 18000000,
+    national_population = 18126390,
+
+    # PLACEHOLDER - proxied from the EDS-Continue Senegal 2023 <5-year-
+    # old sample composition (Tables 10.8/10.9: 3,762 urban / 5,743
+    # rural = 39.6% urban), NOT a whole-population census figure.
+    # Verify against RGPH-5 (2023) before treating this as reliable.
+    # Used only for the urban/rural (residence) equity dimension, since
+    # unlike wealth quintiles (equal-sized by construction) the two
+    # residence groups are not equally sized.
+    national_urban_share = 0.396,
 
     # Weight given to the neonatal-mortality-derived quintile ratio
     # (vs. the mean disease-share ratio across the 14 GBD causes in

@@ -4,14 +4,18 @@
 # Runs the Distributional Cost-Effectiveness Analysis (DCEA) for the
 # Senegal HBP league table, following Arnold, Nkhoma & Griffin (2020)
 # ("Distributional impact of the Malawian Essential Health Package",
-# Health Policy and Planning 35(6):646-656) applied to Senegal.
+# Health Policy and Planning 35(6):646-656) applied to Senegal, for
+# BOTH equity-relevant stratifiers used in that paper: wealth quintile
+# and residence (urban/rural).
 #
 # Prerequisite: data/dcea_prep/DCEA_preparatory_data.xlsx must exist
-# and have its D (tab 2) / E (tab 3) / F (tab 4) tables filled in -
-# every row is filled as of this version, using a tiered fallback
-# (Senegal EDS-Continue actual > Malawi published values > plausible
-# WHO/regional assumption), colour-coded and documented cell by cell
-# in that workbook's "Data tier" column. Replace tier-2/3 values with
+# and have its D (tab 2) / E (tab 3) / F (tab 4) tables filled in, for
+# both quintile AND residence columns - every row is filled as of this
+# version, using a tiered fallback (Senegal EDS-Continue actual >
+# Malawi published values, transported via relative risk where the
+# two countries' population compositions differ > plausible WHO/
+# regional assumption), colour-coded and documented cell by cell in
+# that workbook's "Data tier" column. Replace tier-2/3 values with
 # Senegal-sourced ones as they become available (see that workbook's
 # tab 6 for how to access the underlying microdata) - nothing else in
 # this script needs to change when you do.
@@ -88,52 +92,69 @@ cat(
 opportunity_cost_rate <- resolve_opportunity_cost_rate(dcea_prep$cet_params, config$cet_usd_per_daly)
 
 # ------------------------------------------------------------
-# Stage 1: distributional impact of every intervention
+# Stage 1: distributional impact of every intervention, for both
+# wealth quintile and residence
 # ------------------------------------------------------------
 distribution <- build_dcea_distribution(
   league_table, interventions_mapped,
   dcea_prep$d_table, dcea_prep$e_table, dcea_prep$f_row,
   opportunity_cost_rate
 )
-quintile_summary <- aggregate_dcea_by_quintile(distribution)
+wealth_summary    <- aggregate_dcea_by_group(distribution, "wealth")
+residence_summary <- aggregate_dcea_by_group(distribution, "residence")
 
 # ------------------------------------------------------------
-# Stage 2: baseline HALE by quintile (simplified - see R/13)
+# Stage 2: baseline HALE by quintile and by residence (simplified -
+# see R/13)
 # ------------------------------------------------------------
 baseline_hale <- build_baseline_hale(
   dcea_prep$d_table,
   national_hale_years = config$dcea$national_hale_years,
+  national_urban_share = config$dcea$national_urban_share,
   mortality_weight = config$dcea$baseline_mortality_weight
 )
 
 # ------------------------------------------------------------
 # Stage 3: inequality metrics, per intervention and for "the package"
 # (defined here as every intervention affordable at the reference CET,
-# reusing R/09_ochalek_analysis.R's own definition of that set)
+# reusing R/09_ochalek_analysis.R's own definition of that set), for
+# both stratifiers
 # ------------------------------------------------------------
 affordability <- build_affordability_table(league_table, config$cet_usd_per_daly)
 package_interventions <- affordability$table$intervention
 
-equity <- compute_equity_metrics(
+wealth_equity <- compute_equity_metrics(
   distribution, baseline_hale, config$dcea$national_population,
-  epsilon = config$dcea$inequality_aversion_epsilon
-)
-package_equity <- compute_package_equity(
+  epsilon = config$dcea$inequality_aversion_epsilon, group_type = "wealth"
+)$per_intervention
+residence_equity <- compute_equity_metrics(
+  distribution, baseline_hale, config$dcea$national_population,
+  epsilon = config$dcea$inequality_aversion_epsilon, group_type = "residence"
+)$per_intervention
+wealth_package_equity <- compute_package_equity(
   distribution, baseline_hale, config$dcea$national_population,
   epsilon = config$dcea$inequality_aversion_epsilon,
-  interventions = package_interventions
+  interventions = package_interventions, group_type = "wealth"
+)
+residence_package_equity <- compute_package_equity(
+  distribution, baseline_hale, config$dcea$national_population,
+  epsilon = config$dcea$inequality_aversion_epsilon,
+  interventions = package_interventions, group_type = "residence"
 )
 
 cat(
   "\nPackage-level equity summary (", length(package_interventions), " interventions affordable at $",
   config$cet_usd_per_daly, "/DALY):\n",
-  "  Total net health benefit: ", round(package_equity$total_net_benefit), " DALYs\n",
-  "  Inequality impact:        ", round(package_equity$inequality_impact), " DALYs averted-equivalent\n",
+  "  Total net health benefit:            ", round(wealth_package_equity$total_net_benefit), " DALYs\n",
+  "  Inequality impact (wealth quintile):  ", round(wealth_package_equity$inequality_impact), " DALYs averted-equivalent\n",
+  "  Inequality impact (residence):        ", round(residence_package_equity$inequality_impact), " DALYs averted-equivalent\n",
   sep = ""
 )
 
 # ------------------------------------------------------------
-# Stage 4: sensitivity analyses
+# Stage 4: sensitivity analyses (wealth-quintile dimension only, as in
+# the bulk of Arnold et al.'s own sensitivity analyses - see
+# R/15_dcea_sensitivity.R's header comment)
 # ------------------------------------------------------------
 sensitivity_table <- build_dcea_sensitivity_table(
   league_table, interventions_mapped,
@@ -147,27 +168,33 @@ sensitivity_table <- build_dcea_sensitivity_table(
 )
 
 # ------------------------------------------------------------
-# Figures
+# Figures - wealth quintile and residence versions
 # ------------------------------------------------------------
-equity_plane_plot <- build_equity_plane_plot(equity$per_intervention)
-benefit_breakdown_full_plot <- build_benefit_breakdown_plot(quintile_summary, scenario = "full")
-benefit_breakdown_realistic_plot <- build_benefit_breakdown_plot(quintile_summary, scenario = "realistic")
-hale_plot <- build_hale_plot(
-  baseline_hale, distribution, package_interventions,
-  config$dcea$national_population, scenario = "full"
-)
+export_figure(build_equity_plane_plot(wealth_equity, "wealth"), "dcea_equity_plane_wealth", config$output_figures_dir, width = 9, height = 7)
+export_figure(build_equity_plane_plot(residence_equity, "residence"), "dcea_equity_plane_residence", config$output_figures_dir, width = 9, height = 7)
 
-export_figure(equity_plane_plot, "dcea_equity_plane", config$output_figures_dir, width = 9, height = 7)
-export_figure(benefit_breakdown_full_plot, "dcea_benefit_breakdown_full", config$output_figures_dir, width = 8, height = 6)
-export_figure(benefit_breakdown_realistic_plot, "dcea_benefit_breakdown_realistic", config$output_figures_dir, width = 8, height = 6)
-export_figure(hale_plot, "dcea_hale_by_quintile", config$output_figures_dir, width = 8, height = 6)
+export_figure(build_benefit_breakdown_plot(wealth_summary, "wealth", "full"), "dcea_benefit_breakdown_wealth_full", config$output_figures_dir, width = 8, height = 6)
+export_figure(build_benefit_breakdown_plot(wealth_summary, "wealth", "realistic"), "dcea_benefit_breakdown_wealth_realistic", config$output_figures_dir, width = 8, height = 6)
+export_figure(build_benefit_breakdown_plot(residence_summary, "residence", "full"), "dcea_benefit_breakdown_residence_full", config$output_figures_dir, width = 7, height = 6)
+export_figure(build_benefit_breakdown_plot(residence_summary, "residence", "realistic"), "dcea_benefit_breakdown_residence_realistic", config$output_figures_dir, width = 7, height = 6)
+
+export_figure(
+  build_hale_plot(baseline_hale, distribution, package_interventions, config$dcea$national_population, "wealth"),
+  "dcea_hale_by_wealth", config$output_figures_dir, width = 8, height = 6
+)
+export_figure(
+  build_hale_plot(baseline_hale, distribution, package_interventions, config$dcea$national_population, "residence"),
+  "dcea_hale_by_residence", config$output_figures_dir, width = 7, height = 6
+)
 
 # ------------------------------------------------------------
 # Tables
 # ------------------------------------------------------------
 export_dcea_tables(
-  distribution, quintile_summary, equity$per_intervention,
-  package_equity, sensitivity_table, league_table, config$output_tables_dir
+  distribution, wealth_summary, residence_summary,
+  wealth_equity, residence_equity,
+  wealth_package_equity, residence_package_equity,
+  sensitivity_table, league_table, config$output_tables_dir
 )
 
 cat("\nDCEA outputs written to ", config$output_tables_dir, "/dcea_results.xlsx and ",
