@@ -61,7 +61,7 @@ Only the fields you list are overridden; everything else keeps its default. Each
 ## Requirements
 
 ```r
-install.packages(c("readxl", "dplyr", "janitor", "ggplot2", "openxlsx"))
+install.packages(c("readxl", "dplyr", "janitor", "ggplot2", "openxlsx", "tidyr"))
 ```
 
 ## The league table machine
@@ -124,6 +124,60 @@ Several sheets repeat the same header text across year blocks (e.g. "2023" appea
 ## Source data: `hbp_senegal_data.xlsx`
 
 The source workbook has 34 sheets. `config$sheets_to_load` loads 18: the ones used by the league table machine above, plus broader HBP Senegal context kept available for other analyses (burden of disease, insurance cartography, demographic/macroeconomic parameters). Left out: pure bibliographic reference (`Tufts_Methods`, `Methods - description`, `Ratios - description`, `References`), other-country comparator data not used by the machine (`Epi data - ML`, `Intervention costs` in Malawian Kwacha), irregular multi-country reference blocks (`Exchange rate`, `population data PPP other`), a small key-value summary (`Results - OHT & GBD`), a project-tracking note (`Data sources` — its one needed value, CET, is in `config.R` instead), the superseded `0_cartographie_raw`, and single-cell section-divider sheets. To load any of these anyway, add the sheet name to `config$sheets_to_load`.
+
+## DCEA module (`main_dcea.R`)
+
+A second, separate entry point runs a **Distributional Cost-Effectiveness Analysis (DCEA)** on top of the league table, following Arnold, Nkhoma & Griffin (2020), *"Distributional impact of the Malawian Essential Health Package"* (Health Policy and Planning 35(6):646-656), adapted to Senegal.
+
+```r
+source("main_dcea.R")
+```
+
+or `Rscript main_dcea.R` (it rebuilds the league table itself first, so `main.R` does not need to be run beforehand).
+
+### Prerequisite: the DCEA prep workbook
+
+`data/dcea_prep/DCEA_preparatory_data.xlsx` maps every intervention to:
+- a **D**isease/eligibility distribution by wealth quintile (tab 2, one row per GBD cause),
+- an **E**ligibility/utilization (coverage) rate by quintile (tab 3, one row per indicator),
+- a national **F** opportunity-cost distribution by quintile (tab 4),
+- CET / opportunity-cost / inequality-aversion parameters (tab 5).
+
+Every row is filled using a **tiered fallback**, colour-coded and documented cell by cell in that workbook's "Data tier" column:
+
+| Tier | Meaning |
+|---|---|
+| 1 / 1b | Senegal EDS-Continue 2023 actual, or a same-survey proxy |
+| 2 | Arnold et al. (2020) Malawi published aggregate, used where no Senegal source exists |
+| 3 | A plausible assumption grounded in general WHO/regional evidence (STEPS NCD pattern, WHO Mental Health Atlas treatment gap, WHO World Malaria Report ITN equity, UNAIDS Treat-All), used where neither Senegal nor Malawi data apply |
+
+Tab 6 of that workbook lists the actual Senegal microdata sources (EDS-Continue, EHCVM, MICS, GBD, RGPH, STEPS, PNT) and how to request access to each, for replacing tier-2/3 values with Senegal-sourced ones over time - nothing in the R code needs to change when a cell is upgraded to tier 1.
+
+Which coverage indicator (E) applies to which intervention can be set by hand in tab 1's "E indicator to use" column; wherever that is left blank, `R/11_dcea_mapping.R` assigns a category-level default automatically, so the pipeline always runs end to end even before every intervention has been reviewed individually - see that file's `e_indicator_source` output column to see which rows are using a default vs. a manual choice.
+
+### What it computes
+
+| Script | Arnold et al. (2020) equivalent |
+|---|---|
+| `R/10_dcea_import.R` | reads the prep workbook |
+| `R/11_dcea_mapping.R` | intervention -> coverage-indicator assignment |
+| `R/12_dcea_distribution.R` | Method Stage 1 / Box 1 (per-intervention distributional impact) |
+| `R/13_dcea_baseline.R` | Method Stage 2 (baseline HALE by quintile) - **simplified**, see the file's header comment: it does not replicate Arnold et al.'s sibling-history life tables (no DHS birth/sibling microdata access yet - see tab 6), and instead reweights national HALE by a burden index built from tab 2 |
+| `R/14_dcea_inequality.R` | Method Stage 3 (Atkinson EDE, health equity impact plane) |
+| `R/15_dcea_sensitivity.R` | Method Stage 4 (SA1-SA3, SA5; SA4 not replicated - see the file's header) |
+| `R/16_dcea_figures.R` | Figures 2, 3b/3d, 4b (residence-based Figures 1/3a/3c/4a are not reproduced - the prep workbook only has a wealth-quintile breakdown, not urban/rural) |
+| `R/17_dcea_export.R` | Table 1, and Supplementary Tables S4/S5 |
+
+Outputs: `output/tables/dcea_results.xlsx` (distribution by intervention, quintile summary, per-intervention equity plane, package equity summary, sensitivity table, and Table-S4/S5-style sheets) and `output/figures/dcea_*.png`.
+
+### Known simplifications vs. Arnold et al. (2020)
+
+- Baseline HALE (Stage 2) is a burden-index reweighting, not a full sibling-history life table.
+- No urban/rural dimension, only wealth quintile.
+- The health opportunity-cost rate defaults to the reference CET (`config$cet_usd_per_daly`) unless tab 5's dedicated Ochalek-type threshold is filled in - the two are conceptually different (willingness-to-pay vs. supply-side opportunity cost).
+- SA4 (alternative baseline mortality data) is not replicated.
+
+These are documented so they can be tightened one at a time as better Senegal data becomes available (tab 6), without needing to change how the rest of the pipeline is called.
 
 ## Adding a new pipeline step
 

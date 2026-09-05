@@ -97,7 +97,58 @@ config <- list(
   # Output locations
   processed_data_dir = "data/processed",
   output_tables_dir   = "output/tables",
-  output_figures_dir  = "output/figures"
+  output_figures_dir  = "output/figures",
+
+  # ----------------------------------------------------------
+  # DCEA (Distributional Cost-Effectiveness Analysis) parameters
+  # See main_dcea.R and R/10-17_dcea_*.R. This mirrors Arnold,
+  # Nkhoma & Griffin (2020) for Malawi, applied to Senegal with a
+  # tiered fallback (Senegal EDS-Continue data > Malawi published
+  # values > plausible WHO/regional assumption) documented cell by
+  # cell in data/dcea_prep/DCEA_preparatory_data.xlsx.
+  # ----------------------------------------------------------
+  dcea_prep_path = "data/dcea_prep/DCEA_preparatory_data.xlsx",
+
+  dcea = list(
+
+    # PLACEHOLDER - verify against WHO Global Health Estimates
+    # (healthy life expectancy at birth, Senegal, latest available
+    # year) before treating baseline HALE figures as reliable.
+    national_hale_years = 58,
+
+    # PLACEHOLDER - verify against ANSD / RGPH-5 (2023) before
+    # treating absolute (non-relative) figures as reliable. Only
+    # affects the denominator used to turn total net benefit into a
+    # per-capita figure for the Atkinson/EDE calculation; the
+    # league-table DALY totals themselves do not depend on it.
+    national_population = 18000000,
+
+    # Weight given to the neonatal-mortality-derived quintile ratio
+    # (vs. the mean disease-share ratio across the 14 GBD causes in
+    # tab 2) when building the simplified baseline health index in
+    # R/13_dcea_baseline.R. See that file's header comment for why
+    # this is a simplification of Arnold et al.'s full sibling-history
+    # life-table method, not a replication of it.
+    baseline_mortality_weight = 0.5,
+
+    # Atkinson inequality-aversion parameter (epsilon). 10 is Arnold
+    # et al.'s own starting value for Malawi, in the absence of a
+    # Senegal-specific estimate (e.g. via Robson et al.-style
+    # elicitation).
+    inequality_aversion_epsilon = 10,
+
+    # Alternative epsilon values for the sensitivity analysis
+    # (R/15_dcea_sensitivity.R), mirroring Arnold et al.'s Sensitivity
+    # Analysis 5 (low = 2, high = 25).
+    inequality_aversion_sensitivity = c("Low (e=2)" = 2, "Reference (e=10)" = 10, "High (e=25)" = 25),
+
+    # Percentage-point shift applied to the poorest two / richest two
+    # quintiles in the "unequal prevalence" and "unequal uptake"
+    # sensitivity scenarios, mirroring Arnold et al.'s Sensitivity
+    # Analyses 1-2 (+/-10 percentage points, split evenly across the
+    # two quintiles on each side).
+    sensitivity_shift_points = 10
+  )
 )
 
 if (file.exists("config_local.R")) {
