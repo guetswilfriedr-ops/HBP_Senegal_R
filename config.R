@@ -73,7 +73,11 @@ config <- list(
   # calculation. Source: 'Data sources'!B15 in the workbook. Update
   # this value here (not by re-adding the 'Data sources' sheet to
   # sheets_to_load) if the analyst revises the threshold.
-  cet_usd_per_daly = 435,
+  # $485/DALY averted is the Senegal-specific reference (Ochalek et
+  # al. 2026, medRxiv, GBD 2023, 92 PRFI) - confirmed 2026-09-06 as
+  # the base case for the dry-run deliverable, superseding the
+  # earlier $400 and $435 values used in this project's prior drafts.
+  cet_usd_per_daly = 485,
 
   # Alternative CET scenarios for the sensitivity analysis
   # (R/09_ochalek_analysis.R), mirroring the way Ochalek et al. (2016)
