@@ -21,10 +21,24 @@ xlsx_header_style <- function() {
 
 xlsx_band_style <- function() createStyle(fgFill = "#EEF2F8")
 
+# Every body cell wraps its text and centers it (both horizontally and
+# vertically) so a fixed, narrow column width never truncates or
+# misaligns a value - long text wraps onto extra lines instead of
+# spilling or being cut off.
+xlsx_body_style <- function() createStyle(wrapText = TRUE, halign = "center", valign = "center")
+
+# Fixed column width, in Excel character-width units: wide enough for
+# an intervention name to read comfortably, uniformly narrow (~95px)
+# everywhere else - so every sheet is scannable at a glance instead of
+# each column auto-sizing to its longest value.
+xlsx_intervention_col_width <- 45
+xlsx_default_col_width <- 15
+
 #' Write one data frame to one styled worksheet of an (already
-#' created) workbook: bold coloured header, frozen header row, light
-#' banding on alternating rows, auto column width, and number formats
-#' for the named columns.
+#' created) workbook: bold coloured header (wrapped, centered), frozen
+#' header row and leading columns, fixed column widths, wrapped and
+#' centered body cells, light banding on alternating rows, and number
+#' formats for the named columns.
 #'
 #' @param wb An openxlsx Workbook (from createWorkbook())
 #' @param sheet_name Name for the new worksheet
@@ -41,12 +55,17 @@ write_xlsx_sheet <- function(wb, sheet_name, df, freeze_col = 1,
   addWorksheet(wb, sheet_name)
   writeData(wb, sheet_name, df, headerStyle = xlsx_header_style())
   freezePane(wb, sheet_name, firstActiveRow = 2, firstActiveCol = freeze_col + 1)
-  setColWidths(wb, sheet_name, cols = seq_along(df), widths = "auto")
+
+  col_widths <- ifelse(names(df) == "Intervention", xlsx_intervention_col_width, xlsx_default_col_width)
+  setColWidths(wb, sheet_name, cols = seq_along(df), widths = col_widths)
 
   n <- nrow(df) + 1
+  if (n >= 2) {
+    addStyle(wb, sheet_name, xlsx_body_style(), rows = 2:n, cols = seq_along(df), gridExpand = TRUE, stack = TRUE)
+  }
   if (n >= 3) {
     band_rows <- seq(3, n, by = 2)
-    addStyle(wb, sheet_name, xlsx_band_style(), rows = band_rows, cols = seq_along(df), gridExpand = TRUE)
+    addStyle(wb, sheet_name, xlsx_band_style(), rows = band_rows, cols = seq_along(df), gridExpand = TRUE, stack = TRUE)
   }
 
   apply_fmt <- function(cols, style) {
@@ -111,9 +130,6 @@ league_table_display_columns <- c(
   intervention                   = "Intervention",
   main_category                  = "Category",
   sub_category                   = "Sub-category",
-  gbd_cause                      = "GBD cause",
-  pct_dalys_lost                 = "GBD cause, % of total DALYs",
-  cost_status                    = "Cost source",
   icer_usd                       = "ICER ($)",
   icer_rank                      = "Rank (ICER)",
   dalys_per_1000usd              = "DALYs averted per $1,000",
@@ -151,7 +167,6 @@ add_league_table_sheet <- function(wb, league_table, sheet_name = "League table"
     ),
     decimal_cols = c(
       "ICER ($)", "DALYs averted per $1,000", "Implementation level (%)",
-      "GBD cause, % of total DALYs",
       "Total DALYs averted, full implementation", "Total DALYs averted, realistic implementation",
       "Net DALYs averted, full implementation", "Net DALYs averted, realistic implementation",
       "Difference in net DALYs averted"
