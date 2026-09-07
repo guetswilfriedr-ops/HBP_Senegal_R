@@ -41,6 +41,7 @@ library(dplyr)
 library(ggplot2)
 
 dollars_millions <- scales::label_dollar(scale = 1e-6, suffix = "M", accuracy = 1)
+number_millions  <- scales::label_number(scale = 1e-6, suffix = "M", accuracy = 1)
 
 #' Recompute net health benefit, its full/realistic difference, and
 #' the rank_nhp ordering for an alternative CET, from a league table
@@ -65,23 +66,26 @@ recompute_net_benefit <- function(league_table, cet_usd_per_daly) {
     mutate(rank_nhp = row_number())
 }
 
-#' Figure 5 equivalent: for the interventions affordable at the CET
-#' (ICER at or below the threshold) only, each drawn as a bar whose
-#' width is its full-implementation cost and whose height is DALYs
-#' averted per $1,000 spent, ordered by ICER, with a threshold line at
-#' the CET and each bar labelled with its ICER rank (matching Table 4)
+#' Figure 5 equivalent: every costed, effective intervention, each
+#' drawn as a bar whose width is its full-implementation cost and
+#' whose height is DALYs averted per $1,000 spent, ordered by ICER.
+#' Bars are coloured by whether the intervention clears the CET, a
+#' dashed vertical line marks the boundary between the last
+#' cost-effective intervention and the first one that is not, and a
+#' horizontal dashed line marks the CET's own efficiency threshold.
 #'
 #' @param league_table Output of build_intervention_funnel()$league_table
 #' @param cet_usd_per_daly Cost-effectiveness threshold
 #' @return A ggplot object
 build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
   df <- league_table %>%
-    filter(!is.na(icer_usd), icer_usd <= cet_usd_per_daly, total_cost_full_usd > 0) %>%
+    filter(!is.na(icer_usd), total_cost_full_usd > 0) %>%
     arrange(icer_rank) %>%
     mutate(
-      xmax = cumsum(total_cost_full_usd),
-      xmin = xmax - total_cost_full_usd,
-      xmid = (xmin + xmax) / 2
+      xmax     = cumsum(total_cost_full_usd),
+      xmin     = xmax - total_cost_full_usd,
+      xmid     = (xmin + xmax) / 2,
+      included = icer_usd <= cet_usd_per_daly
     )
 
   threshold_efficiency <- 1000 / cet_usd_per_daly
@@ -91,48 +95,70 @@ build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
   # ones alongside costly, low-yield ones) - a log y-axis is needed
   # for the low-yield end of the frontier to stay visible at all.
   log_floor <- min(df$dalys_per_1000usd, na.rm = TRUE) / 2
-  x_span <- max(df$xmax) - min(df$xmin)
-  budget_usd <- max(df$xmax)
+  x_span    <- max(df$xmax) - min(df$xmin)
 
-  best_value <- df %>% slice_head(n = 1)
+  best_value    <- df %>% slice_head(n = 1)
+  last_included <- df %>% filter(included) %>% slice_tail(n = 1)
+  worst_value   <- df %>% slice_tail(n = 1)
+  boundary_x    <- last_included$xmax
 
   ggplot(df) +
     geom_rect(
-      aes(xmin = xmin, xmax = xmax, ymin = log_floor, ymax = dalys_per_1000usd),
-      fill = "#1F4E78", color = "white", linewidth = 0.1
+      aes(xmin = xmin, xmax = xmax, ymin = log_floor, ymax = dalys_per_1000usd, fill = included),
+      color = "white", linewidth = 0.1
     ) +
-    geom_text(
-      aes(x = xmid, y = dalys_per_1000usd, label = icer_rank),
-      angle = 90, hjust = -0.2, size = 1.9, color = "#1F4E78"
-    ) +
+    scale_fill_manual(values = c(`TRUE` = "#1F4E78", `FALSE` = "#B5533C"), guide = "none") +
     geom_hline(yintercept = threshold_efficiency, color = "#C0392B", linetype = "dashed", linewidth = 0.8) +
+    geom_vline(xintercept = boundary_x, color = "#6C757D", linetype = "dashed", linewidth = 0.8) +
     annotate(
       "text", x = min(df$xmin), y = threshold_efficiency, vjust = -0.6, hjust = 0,
       label = paste0("CET threshold: ", round(threshold_efficiency, 1), " DALYs / $1,000"),
       color = "#C0392B", size = 3, fontface = "italic"
     ) +
     annotate(
-      "segment", x = best_value$xmax, xend = best_value$xmax + x_span * 0.12,
-      y = best_value$dalys_per_1000usd, yend = best_value$dalys_per_1000usd * 0.35,
+      "segment", x = best_value$xmax, xend = best_value$xmax + x_span * 0.10,
+      y = best_value$dalys_per_1000usd, yend = best_value$dalys_per_1000usd * 0.4,
       arrow = arrow(length = unit(0.15, "cm")), color = "#1F4E78"
     ) +
     annotate(
-      "text", x = best_value$xmax + x_span * 0.13, y = best_value$dalys_per_1000usd * 0.35,
-      label = paste0("Best value (rank 1):\n", strwrap(best_value$intervention, width = 28) %>% paste(collapse = "\n")),
-      hjust = 0, size = 2.8, color = "#1F4E78", lineheight = 0.9
+      "text", x = best_value$xmax + x_span * 0.11, y = best_value$dalys_per_1000usd * 0.4,
+      label = paste0("Best value (rank 1):\n", strwrap(best_value$intervention, width = 26) %>% paste(collapse = "\n")),
+      hjust = 0, size = 2.6, color = "#1F4E78", lineheight = 0.9
     ) +
     annotate(
-      "text", x = budget_usd, y = log_floor, vjust = 1.6, hjust = 1,
-      label = paste0("Implied budget for the affordable package: ", dollars_millions(budget_usd)),
-      size = 2.8, color = "#7A3324", fontface = "italic"
+      "segment", x = last_included$xmax, xend = last_included$xmax - x_span * 0.12,
+      y = last_included$dalys_per_1000usd, yend = last_included$dalys_per_1000usd * 6,
+      arrow = arrow(length = unit(0.15, "cm")), color = "#1F4E78"
     ) +
-    scale_x_continuous(labels = dollars_millions, expand = expansion(mult = c(0.01, 0.22))) +
+    annotate(
+      "text", x = last_included$xmax - x_span * 0.13, y = last_included$dalys_per_1000usd * 6,
+      label = paste0(
+        "Last cost-effective (rank ", last_included$icer_rank, "):\n",
+        strwrap(last_included$intervention, width = 26) %>% paste(collapse = "\n"),
+        "\n(boundary: ", dollars_millions(boundary_x), ")"
+      ),
+      hjust = 1, size = 2.6, color = "#1F4E78", lineheight = 0.9
+    ) +
+    annotate(
+      "segment", x = worst_value$xmax, xend = worst_value$xmax + x_span * 0.08,
+      y = worst_value$dalys_per_1000usd, yend = worst_value$dalys_per_1000usd * 4,
+      arrow = arrow(length = unit(0.15, "cm")), color = "#B5533C"
+    ) +
+    annotate(
+      "text", x = worst_value$xmax + x_span * 0.09, y = worst_value$dalys_per_1000usd * 4,
+      label = paste0(
+        "Least cost-effective (rank ", worst_value$icer_rank, "):\n",
+        strwrap(worst_value$intervention, width = 26) %>% paste(collapse = "\n")
+      ),
+      hjust = 0, size = 2.6, color = "#B5533C", lineheight = 0.9
+    ) +
+    scale_x_continuous(labels = dollars_millions, expand = expansion(mult = c(0.01, 0.24))) +
     scale_y_log10(labels = scales::label_comma()) +
     labs(
-      title = "DALYs averted per $1,000 for interventions affordable at the CET",
+      title = "DALYs averted per $1,000, all costed interventions ordered by ICER",
       subtitle = paste0(
         "Health opportunity cost: $", cet_usd_per_daly, "/DALY (", round(threshold_efficiency, 1), " DALYs per $1,000). ",
-        "Bar labels: ICER rank from Table 4. Log scale"
+        "Blue = cost-effective at the CET, red = not. Log scale"
       ),
       x = "Cumulative cost, full implementation",
       y = "DALYs averted per $1,000 spent (log scale)"
@@ -144,22 +170,36 @@ build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
 #' Figure 6 equivalent: every intervention that reached the league
 #' table, ranked by net health benefit (full implementation), as bars
 #' (colour marks a positive vs. negative net benefit), with cumulative
-#' spend overlaid as a line on a secondary axis
+#' spend overlaid as a line on a secondary axis. A dashed vertical
+#' line marks the package-inclusion cutoff (icer_usd <= CET) - the
+#' same rule as the "Included in package" column in Tables 5-7, which
+#' falls at a clean rank boundary because net_dalys_full >= 0 iff
+#' icer_usd <= CET.
 #'
 #' @param league_table Output of build_intervention_funnel()$league_table
+#' @param cet_usd_per_daly Cost-effectiveness threshold
 #' @return A ggplot object
-build_fig6_plot <- function(league_table) {
-  df <- league_table %>% arrange(rank_nhp)
-  scale_factor <- max(abs(df$net_dalys_full), na.rm = TRUE) / max(df$cumulative_cost_full_usd, na.rm = TRUE)
+build_fig6_plot <- function(league_table, cet_usd_per_daly) {
+  df <- league_table %>%
+    arrange(rank_nhp) %>%
+    mutate(included = !is.na(icer_usd) & icer_usd <= cet_usd_per_daly)
+  scale_factor  <- max(abs(df$net_dalys_full), na.rm = TRUE) / max(df$cumulative_cost_full_usd, na.rm = TRUE)
+  boundary_rank <- max(df$rank_nhp[df$included], na.rm = TRUE) + 0.5
 
   ggplot(df, aes(x = rank_nhp)) +
     geom_col(aes(y = net_dalys_full, fill = net_dalys_full >= 0), width = 0.85) +
     geom_line(aes(y = cumulative_cost_full_usd * scale_factor), color = "#E8A33D", linewidth = 1) +
     geom_hline(yintercept = 0, color = "#C0392B", linetype = "dashed") +
+    geom_vline(xintercept = boundary_rank, color = "#3A7CA5", linetype = "dashed", linewidth = 0.8) +
+    annotate(
+      "text", x = boundary_rank, y = max(df$net_dalys_full, na.rm = TRUE) * 0.95,
+      angle = 90, hjust = 1, vjust = -0.4, size = 2.5, fontface = "italic", color = "#3A7CA5",
+      label = "Package cutoff: left = to include, right = not"
+    ) +
     scale_fill_manual(values = c(`TRUE` = "#1F4E78", `FALSE` = "#B5533C"), guide = "none") +
     scale_y_continuous(
       name = "Net DALYs averted (full implementation)",
-      labels = scales::label_comma(),
+      labels = number_millions,
       sec.axis = sec_axis(~ . / scale_factor, name = "Cumulative spend, full implementation", labels = dollars_millions)
     ) +
     labs(
@@ -175,42 +215,45 @@ build_fig6_plot <- function(league_table) {
     )
 }
 
-#' Figure 7 equivalent: for the affordable core package only (ICER at
-#' or below the CET), net health benefit and cumulative spend at full
-#' implementation (solid lines) vs. realistic implementation (dotted
-#' lines) - the gap between them is health and budget left unused by
-#' partial coverage
+#' Figure 7 equivalent: every intervention in the league table, net
+#' health benefit and cumulative spend at full implementation (solid
+#' lines) vs. realistic implementation (dotted lines) - the gap
+#' between them is health and budget left unused by partial coverage.
+#' A dashed vertical line marks the affordability cutoff (icer_usd <=
+#' CET), the same rule and rank position as in build_fig6_plot().
 #'
 #' @param league_table Output of build_intervention_funnel()$league_table
 #' @param cet_usd_per_daly Cost-effectiveness threshold
 #' @return A ggplot object
 build_fig7_plot <- function(league_table, cet_usd_per_daly) {
-  core <- league_table %>%
-    filter(!is.na(icer_usd), icer_usd <= cet_usd_per_daly) %>%
+  df <- league_table %>%
     arrange(rank_nhp) %>%
-    mutate(
-      x = row_number(),
-      cumulative_cost_full_core      = cumsum(coalesce(total_cost_full_usd, 0)),
-      cumulative_cost_realistic_core = cumsum(coalesce(total_cost_realistic_usd, 0))
-    )
+    mutate(included = !is.na(icer_usd) & icer_usd <= cet_usd_per_daly)
 
-  scale_factor <- max(abs(core$net_dalys_full), na.rm = TRUE) / max(core$cumulative_cost_full_core, na.rm = TRUE)
+  scale_factor  <- max(abs(df$net_dalys_full), na.rm = TRUE) / max(df$cumulative_cost_full_usd, na.rm = TRUE)
+  boundary_rank <- max(df$rank_nhp[df$included], na.rm = TRUE) + 0.5
 
-  ggplot(core, aes(x = x)) +
+  ggplot(df, aes(x = rank_nhp)) +
     geom_line(aes(y = net_dalys_full, color = "Net DALYs averted"), linewidth = 1, linetype = "solid") +
     geom_line(aes(y = net_dalys_realistic, color = "Net DALYs averted"), linewidth = 1, linetype = "dotted") +
-    geom_line(aes(y = cumulative_cost_full_core * scale_factor, color = "Cumulative spend"), linewidth = 1, linetype = "solid") +
-    geom_line(aes(y = cumulative_cost_realistic_core * scale_factor, color = "Cumulative spend"), linewidth = 1, linetype = "dotted") +
+    geom_line(aes(y = cumulative_cost_full_usd * scale_factor, color = "Cumulative spend"), linewidth = 1, linetype = "solid") +
+    geom_line(aes(y = cumulative_cost_realistic_usd * scale_factor, color = "Cumulative spend"), linewidth = 1, linetype = "dotted") +
+    geom_vline(xintercept = boundary_rank, color = "#3A7CA5", linetype = "dashed", linewidth = 0.8) +
+    annotate(
+      "text", x = boundary_rank, y = max(df$net_dalys_full, na.rm = TRUE) * 0.95,
+      angle = 90, hjust = 1, vjust = -0.4, size = 2.5, fontface = "italic", color = "#3A7CA5",
+      label = "Affordability cutoff: left = affordable, right = not"
+    ) +
     scale_color_manual(values = c("Net DALYs averted" = "#1F4E78", "Cumulative spend" = "#E8A33D")) +
     scale_y_continuous(
       name = "Net DALYs averted",
-      labels = scales::label_comma(),
+      labels = number_millions,
       sec.axis = sec_axis(~ . / scale_factor, name = "Cumulative spend", labels = dollars_millions)
     ) +
     labs(
       title = "Full vs realistic implementation: net health benefit and cumulative spend",
-      subtitle = "Affordable core package only. Solid = full implementation (100%); dotted = realistic implementation",
-      x = "Intervention rank within the affordable core package (by net health benefit)",
+      subtitle = "All league table interventions. Solid = full implementation (100%); dotted = realistic implementation",
+      x = "Intervention rank (by net health benefit)",
       color = NULL
     ) +
     theme_minimal(base_size = 10) +
@@ -267,7 +310,7 @@ build_table5_net_benefit_ranking <- function(league_table, cet_usd_per_daly) {
       `ICER [$]`                                      = icer_usd,
       `DALYs averted per $1,000`                       = dalys_per_1000usd,
       `Cases per annum`                                 = cases_full_2023,
-      `Included in package (ICER <= CET)?`               = !is.na(icer_usd) & icer_usd <= cet_usd_per_daly,
+      `Included in package (ICER <= CET)?`               = package_inclusion_label(icer_usd, cet_usd_per_daly),
       `Total cost (full implementation) [$]`             = total_cost_full_usd,
       `Cumulative cost [$]`                               = cumulative_cost_full_usd,
       `Total DALYs averted (full implementation)`          = total_dalys_full,
@@ -294,7 +337,7 @@ build_table6_net_benefit_summary <- function(league_table, cet_usd_per_daly) {
       `ICER [$]`                                                 = icer_usd,
       `DALYs averted per $1,000`                                  = dalys_per_1000usd,
       `Cases per annum`                                            = cases_full_2023,
-      `Included in package (ICER <= CET)?`                          = !is.na(icer_usd) & icer_usd <= cet_usd_per_daly,
+      `Included in package (ICER <= CET)?`                          = package_inclusion_label(icer_usd, cet_usd_per_daly),
       `Implementation level (%)`                                    = implementation_level_pct,
       `Total cost (full implementation) [$]`                         = total_cost_full_usd,
       `Cumulative cost (full implementation) [$]`                     = cumsum(coalesce(total_cost_full_usd, 0)),
@@ -344,7 +387,7 @@ build_budget_reallocation_table <- function(league_table, cet_usd_per_daly) {
       `ICER [$]`                                            = icer_usd,
       `DALYs averted per $1,000`                             = dalys_per_1000usd,
       `Cases per annum`                                       = cases_full_2023,
-      `Included in package (ICER <= CET)?`                     = !is.na(icer_usd) & icer_usd <= cet_usd_per_daly,
+      `Included in package (ICER <= CET)?`                     = package_inclusion_label(icer_usd, cet_usd_per_daly),
       `Implementation level (%)`                               = implementation_level_pct,
       `Total cost (realistic implementation) [$]`               = total_cost_realistic_usd,
       `Cumulative cost (additional interventions, realistic implementation) [$]` = cumulative_additional_cost,

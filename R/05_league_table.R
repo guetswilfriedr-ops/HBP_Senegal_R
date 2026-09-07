@@ -24,6 +24,20 @@
 
 library(dplyr)
 
+#' Human-readable package-membership label, used everywhere the
+#' ICER<=CET decision is shown to a reader (League table, Tables 5-7)
+#' instead of a bare TRUE/FALSE
+#'
+#' @param icer_usd Vector of ICER values
+#' @param cet_usd_per_daly The cost-effectiveness threshold
+#' @return "To be included" / "Not to be included"
+package_inclusion_label <- function(icer_usd, cet_usd_per_daly) {
+  if_else(
+    !is.na(icer_usd) & icer_usd <= cet_usd_per_daly,
+    "To be included", "Not to be included"
+  )
+}
+
 step_labels <- c(
   "1" = "Linked to a Top-20-DALY-burden GBD cause",
   "2" = "Has a unit cost",
@@ -130,9 +144,9 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
       implementation_level_pct  = round(100 * cases_scaleup_2023 / cases_full_2023, 1),
       # The affordable core package, at the reference CET: every
       # downstream table (Table 5-8) that flags package membership
-      # reads this same column, so a change in cet_usd_per_daly moves
+      # reads this same rule, so a change in cet_usd_per_daly moves
       # the flag everywhere at once.
-      included_in_package       = !is.na(icer_usd) & icer_usd <= cet_usd_per_daly
+      included_in_package       = package_inclusion_label(icer_usd, cet_usd_per_daly)
     ) %>%
     arrange(icer_usd) %>%
     mutate(icer_rank = row_number()) %>%

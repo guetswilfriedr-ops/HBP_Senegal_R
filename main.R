@@ -106,7 +106,7 @@ save_xlsx(wb_funnel, "funnel_tracking", config$output_tables_dir)
 # 4/7/8. See R/09_ochalek_analysis.R
 # ------------------------------------------------------------
 efficiency_frontier_plot <- build_efficiency_frontier_plot(funnel$league_table, config$cet_usd_per_daly)
-fig6_plot                <- build_fig6_plot(funnel$league_table)
+fig6_plot                <- build_fig6_plot(funnel$league_table, config$cet_usd_per_daly)
 fig7_plot                <- build_fig7_plot(funnel$league_table, config$cet_usd_per_daly)
 
 export_figure(efficiency_frontier_plot, "efficiency_frontier", config$output_figures_dir, width = 11, height = 6)
