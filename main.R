@@ -114,7 +114,7 @@ export_figure(fig6_plot, "fig6_net_benefit_ranked", config$output_figures_dir, w
 export_figure(fig7_plot, "fig7_full_vs_realistic", config$output_figures_dir, width = 11, height = 6)
 
 table4_icer_ranking <- build_table4_icer_ranking(funnel$league_table)
-table5_nhp_ranking  <- build_table5_net_benefit_ranking(funnel$league_table)
+table5_nhp_ranking  <- build_table5_net_benefit_ranking(funnel$league_table, config$cet_usd_per_daly)
 table6_net_benefit  <- build_table6_net_benefit_summary(funnel$league_table, config$cet_usd_per_daly)
 budget_reallocation <- build_budget_reallocation_table(funnel$league_table, config$cet_usd_per_daly)
 table8_sensitivity <- build_table8_ehp_scale_sensitivity(
@@ -171,6 +171,7 @@ write_xlsx_sheet(
     "Full implementation: total DALYs averted", "Realistic implementation: total DALYs averted",
     "Max DALYs from moving realistic to full implementation",
     "Extended package: additional DALYs averted from the underspend"
-  )
+  ),
+  integer_cols = "N interventions in package"
 )
 save_xlsx(wb_findings, "detailed_findings", config$output_tables_dir)

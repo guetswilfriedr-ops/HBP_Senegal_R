@@ -127,7 +127,12 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
       # DALYs averted per $1,000 spent is the reciprocal of the ICER,
       # expressed at a more legible scale for reading and charting
       dalys_per_1000usd         = if_else(!is.na(icer_usd) & icer_usd != 0, 1000 / icer_usd, NA_real_),
-      implementation_level_pct  = round(100 * cases_scaleup_2023 / cases_full_2023, 1)
+      implementation_level_pct  = round(100 * cases_scaleup_2023 / cases_full_2023, 1),
+      # The affordable core package, at the reference CET: every
+      # downstream table (Table 5-8) that flags package membership
+      # reads this same column, so a change in cet_usd_per_daly moves
+      # the flag everywhere at once.
+      included_in_package       = !is.na(icer_usd) & icer_usd <= cet_usd_per_daly
     ) %>%
     arrange(icer_usd) %>%
     mutate(icer_rank = row_number()) %>%
@@ -149,7 +154,7 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
       total_cost_realistic_usd, total_dalys_realistic,
       total_cost_full_usd, total_dalys_full,
       cumulative_cost_full_usd, cumulative_cost_realistic_usd,
-      icer_usd, icer_rank, dalys_per_1000usd,
+      icer_usd, icer_rank, dalys_per_1000usd, included_in_package,
       net_dalys_realistic, net_dalys_full, diff_net_dalys,
       health_system_value_usd
     )

@@ -132,6 +132,7 @@ league_table_display_columns <- c(
   sub_category                   = "Sub-category",
   icer_usd                       = "ICER ($)",
   icer_rank                      = "Rank (ICER)",
+  included_in_package            = "Included in package (ICER <= CET)?",
   dalys_per_1000usd              = "DALYs averted per $1,000",
   cases_full_2023                = "Cases per annum",
   implementation_level_pct       = "Implementation level (%)",

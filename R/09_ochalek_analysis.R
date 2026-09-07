@@ -255,9 +255,10 @@ build_table4_icer_ranking <- function(league_table) {
 #' DALYs averted
 #'
 #' @param league_table Output of build_intervention_funnel()$league_table
+#' @param cet_usd_per_daly The CET defining package membership
 #' @return A data frame, in English column names, ready to write with
 #'   write_xlsx_sheet() (no further relabelling needed)
-build_table5_net_benefit_ranking <- function(league_table) {
+build_table5_net_benefit_ranking <- function(league_table, cet_usd_per_daly) {
   league_table %>%
     arrange(rank_nhp) %>%
     transmute(
@@ -266,6 +267,7 @@ build_table5_net_benefit_ranking <- function(league_table) {
       `ICER [$]`                                      = icer_usd,
       `DALYs averted per $1,000`                       = dalys_per_1000usd,
       `Cases per annum`                                 = cases_full_2023,
+      `Included in package (ICER <= CET)?`               = !is.na(icer_usd) & icer_usd <= cet_usd_per_daly,
       `Total cost (full implementation) [$]`             = total_cost_full_usd,
       `Cumulative cost [$]`                               = cumulative_cost_full_usd,
       `Total DALYs averted (full implementation)`          = total_dalys_full,
@@ -292,6 +294,7 @@ build_table6_net_benefit_summary <- function(league_table, cet_usd_per_daly) {
       `ICER [$]`                                                 = icer_usd,
       `DALYs averted per $1,000`                                  = dalys_per_1000usd,
       `Cases per annum`                                            = cases_full_2023,
+      `Included in package (ICER <= CET)?`                          = !is.na(icer_usd) & icer_usd <= cet_usd_per_daly,
       `Implementation level (%)`                                    = implementation_level_pct,
       `Total cost (full implementation) [$]`                         = total_cost_full_usd,
       `Cumulative cost (full implementation) [$]`                     = cumsum(coalesce(total_cost_full_usd, 0)),
@@ -341,6 +344,7 @@ build_budget_reallocation_table <- function(league_table, cet_usd_per_daly) {
       `ICER [$]`                                            = icer_usd,
       `DALYs averted per $1,000`                             = dalys_per_1000usd,
       `Cases per annum`                                       = cases_full_2023,
+      `Included in package (ICER <= CET)?`                     = !is.na(icer_usd) & icer_usd <= cet_usd_per_daly,
       `Implementation level (%)`                               = implementation_level_pct,
       `Total cost (realistic implementation) [$]`               = total_cost_realistic_usd,
       `Cumulative cost (additional interventions, realistic implementation) [$]` = cumulative_additional_cost,
@@ -381,6 +385,7 @@ build_table8_ehp_scale_sensitivity <- function(league_table, reference_cet, mult
     data.frame(
       `CET scenario`                                          = scenario_label,
       `How much can Senegal afford to pay to avert a DALY? [$]` = cet_value,
+      `N interventions in package`                              = nrow(core),
       `Full implementation: total spend [$]`                    = sum(core$total_cost_full_usd, na.rm = TRUE),
       `Full implementation: total DALYs averted`                 = sum(core$total_dalys_full, na.rm = TRUE),
       `Realistic implementation: total spend [$]`                  = sum(core$total_cost_realistic_usd, na.rm = TRUE),
