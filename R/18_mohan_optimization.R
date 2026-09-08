@@ -35,6 +35,76 @@
 library(lpSolve)
 library(dplyr)
 
+#' Blend the raw data's "OHT Avg medical personnel minut(es)" sheet
+#' (minutes of staff time per case, BY DELIVERY PLATFORM: Community,
+#' Outreach, Clinic, Hospital) with "OHT Delivery channels" (the % of
+#' cases each intervention actually reaches through each channel,
+#' including three non-personnel channels - WASH, Other non-health,
+#' Private sector - carried in the raw sheet but not used here) into
+#' ONE minutes-per-case figure per intervention: a case-share-weighted
+#' average across the four personnel-time channels.
+#'
+#' This is the NEED side only, and only at the level of total "medical
+#' personnel" time - the raw data does not split minutes by cadre
+#' (doctor vs. nurse vs. pharmacist, etc.), so this feeds a single
+#' pooled-workforce time constraint (find_optimal_package()'s hr_needs
+#' with one column), not Mohan et al.'s per-cadre bottleneck analysis.
+#' The CAPACITY side (total staff and minutes/year available, ideally
+#' per cadre) is not in this project's raw data at all and has to come
+#' from a Senegal HR source - see hr_capacity_minutes below.
+#'
+#' @param raw_data_path Path to the project's raw Excel workbook
+#'   (config$raw_data_path).
+#' @return A data frame: intervention, minutes_per_case (NA where the
+#'   two source sheets' channel shares don't sum to a usable total -
+#'   flagged rather than silently zeroed).
+build_hr_need_minutes <- function(raw_data_path) {
+  minutes <- openxlsx::read.xlsx(raw_data_path, sheet = "OHT Avg medical personnel minut", colNames = FALSE)
+  names(minutes) <- c("intervention", "community", "outreach", "clinic", "hospital")
+
+  channels <- openxlsx::read.xlsx(raw_data_path, sheet = "OHT Delivery channels", colNames = FALSE)
+  names(channels) <- c("intervention", "community", "outreach", "clinic", "hospital", "wash", "other", "private", "channel_total")
+  channels$channel_total <- NULL
+
+  to_num <- function(df) {
+    df %>% mutate(across(-intervention, ~ suppressWarnings(as.numeric(.x))))
+  }
+  minutes  <- to_num(minutes)
+  channels <- to_num(channels)
+
+  channels <- channels %>%
+    # As in the minutes sheet, NA in a channel column means "0% of
+    # cases reach this intervention through this channel", not
+    # "unknown" - coalesce before summing so one NA channel doesn't
+    # turn an otherwise complete row's share total into NA.
+    mutate(across(c(community, outreach, clinic, hospital, wash, other, private), ~ coalesce(.x, 0))) %>%
+    mutate(channel_share_total = community + outreach + clinic + hospital + wash + other + private) %>%
+    filter(channel_share_total > 0) %>%
+    mutate(across(c(community, outreach, clinic, hospital), ~ .x / channel_share_total))
+
+  minutes %>%
+    inner_join(channels, by = "intervention", suffix = c("_minutes", "_share"), relationship = "many-to-many") %>%
+    mutate(
+      # A channel's minutes figure is NA whenever that channel isn't
+      # a delivery route for this intervention at all (e.g. a
+      # hospital-only obstetric procedure has NA, not 0, in its
+      # community/outreach minutes cells) - and that channel's case
+      # share is then 0, so coalesce()-ing to 0 before multiplying is
+      # correct: it is NOT the same as treating genuinely unknown
+      # minutes as free. Skipping this coalesce is a real bug this
+      # port hit and fixed - an NA in an irrelevant channel silently
+      # turned an otherwise fully-known weighted average into NA for
+      # about a quarter of this project's league table (mostly
+      # hospital-only maternal/obstetric interventions).
+      minutes_per_case = coalesce(community_minutes, 0) * community_share +
+        coalesce(outreach_minutes, 0) * outreach_share +
+        coalesce(clinic_minutes, 0) * clinic_share +
+        coalesce(hospital_minutes, 0) * hospital_share
+    ) %>%
+    group_by(intervention) %>%
+    summarise(minutes_per_case = mean(minutes_per_case, na.rm = TRUE), .groups = "drop")
+}
+
 #' Solve for the health-maximizing coverage of each intervention,
 #' subject to a consumables budget and, optionally, health-workforce
 #' time constraints by cadre.
