@@ -349,14 +349,15 @@ optimize_benefit_package <- function(league_table,
   }
 
   summary_out <- list(
-    n_interventions_considered = n,
-    n_interventions_in_package = sum(in_package),
-    total_dalys_averted        = sum(dalys_solution),
-    net_dalys_averted          = solution$objval,
-    budget_used_usd            = sum(budget_cost_solution),
-    budget_used_pct            = if (is.finite(budget_usd)) sum(budget_cost_solution) / budget_usd else NA_real_,
-    highest_icer_in_package    = highest_icer_in_package,
-    hr_used_minutes            = hr_used
+    n_interventions_considered      = n,
+    n_interventions_positive_nethealth = sum(nethealth > 0),
+    n_interventions_in_package      = sum(in_package),
+    total_dalys_averted             = sum(dalys_solution),
+    net_dalys_averted               = solution$objval,
+    budget_used_usd                 = sum(budget_cost_solution),
+    budget_used_pct                 = if (is.finite(budget_usd)) sum(budget_cost_solution) / budget_usd else NA_real_,
+    highest_icer_in_package         = highest_icer_in_package,
+    hr_used_minutes                 = hr_used
   )
 
   list(package = package, summary = summary_out)
@@ -409,4 +410,77 @@ build_optimization_package_table <- function(result) {
     check.names = FALSE
   ) %>%
     arrange(desc(`DALYs averted`))
+}
+
+#' Scenario-comparison table in the classic transposed layout used in
+#' the constrained-optimization literature: one row per headline
+#' metric, one column per scenario - easier to scan than a wide
+#' one-row-per-scenario table once there are more than 2-3 metrics.
+#'
+#' @param scenario_results Named list, each element a list(package=,
+#'   summary=) as returned by optimize_benefit_package(); names become
+#'   column headers.
+#' @return A data frame: a "Metric" column plus one column per
+#'   scenario name.
+build_scenario_comparison_table <- function(scenario_results) {
+  metric_rows <- list(
+    "Number of interventions with positive net health benefit" = function(s) s$n_interventions_positive_nethealth,
+    "Number of interventions in the optimal package"           = function(s) s$n_interventions_in_package,
+    "Net DALYs averted"                                        = function(s) round(s$net_dalys_averted),
+    "Total DALYs averted"                                      = function(s) round(s$total_dalys_averted),
+    "Highest ICER in the optimal package ($)"                  = function(s) round(s$highest_icer_in_package, 2),
+    "Percentage of consumables budget required"                = function(s) if (is.na(s$budget_used_pct)) NA else paste0(round(100 * s$budget_used_pct), "%")
+  )
+
+  out <- data.frame(Metric = names(metric_rows), check.names = FALSE)
+  for (scenario_name in names(scenario_results)) {
+    s <- scenario_results[[scenario_name]]$summary
+    out[[scenario_name]] <- vapply(metric_rows, function(f) as.character(f(s)), character(1))
+  }
+  out
+}
+
+#' Rate of inclusion of interventions from different disease programs
+#' in the optimal package, across one or more scenarios - the
+#' program-level view of a scenario-comparison table.
+#'
+#' @param scenario_results Named list, each element a list(package=,
+#'   summary=) as returned by optimize_benefit_package(). All elements
+#'   must share the same set of considered interventions (i.e. differ
+#'   only in constraints, not in league_table) for the "N considered"
+#'   column to be meaningful once.
+#' @return A data frame: Program, N interventions considered, then two
+#'   columns per scenario (Number, Percentage) included in that
+#'   scenario's optimal package.
+build_program_inclusion_table <- function(scenario_results) {
+  first_pkg <- scenario_results[[1]]$package
+  considered_by_program <- first_pkg %>%
+    count(main_category, name = "n_considered")
+
+  out <- considered_by_program %>% rename(Program = main_category, `Number of interventions considered` = n_considered)
+
+  for (scenario_name in names(scenario_results)) {
+    pkg <- scenario_results[[scenario_name]]$package
+    included_by_program <- pkg %>%
+      filter(coverage_share > 1e-6) %>%
+      count(main_category, name = "n_included")
+    out <- out %>%
+      left_join(included_by_program, by = c("Program" = "main_category")) %>%
+      mutate(n_included = coalesce(n_included, 0L))
+    out[[paste0(scenario_name, " - Number included")]] <- out$n_included
+    out[[paste0(scenario_name, " - Percentage included")]] <- paste0(
+      round(100 * out$n_included / out$`Number of interventions considered`), "%"
+    )
+    out$n_included <- NULL
+  }
+
+  total_row <- data.frame(Program = "Grand total", check.names = FALSE)
+  total_row[["Number of interventions considered"]] <- sum(out[["Number of interventions considered"]])
+  for (scenario_name in names(scenario_results)) {
+    num_col <- paste0(scenario_name, " - Number included")
+    pct_col <- paste0(scenario_name, " - Percentage included")
+    total_row[[num_col]] <- sum(out[[num_col]])
+    total_row[[pct_col]] <- paste0(round(100 * total_row[[num_col]] / total_row[["Number of interventions considered"]]), "%")
+  }
+  rbind(out, total_row)
 }

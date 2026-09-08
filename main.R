@@ -89,6 +89,7 @@ save_xlsx(wb_steps, "pipeline_steps", config$processed_data_dir)
 # ------------------------------------------------------------
 wb_final <- createWorkbook()
 add_league_table_sheet(wb_final, funnel$league_table)
+add_sources_sheet(wb_final, "Cost-effectiveness threshold (CET)")
 save_xlsx(wb_final, "league_table_final", config$output_tables_dir)
 
 # ------------------------------------------------------------
@@ -175,4 +176,5 @@ write_xlsx_sheet(
   ),
   integer_cols = "N interventions in package"
 )
+add_sources_sheet(wb_findings, "Cost-effectiveness threshold (CET)")
 save_xlsx(wb_findings, "detailed_findings", config$output_tables_dir)

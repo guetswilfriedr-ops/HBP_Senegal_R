@@ -11,21 +11,34 @@
 library(ggplot2)
 library(openxlsx)
 
+# LISER graphic-charter blue (darkest primary tint) - see the
+# liser-style skill for the full palette. Used here as the one colour
+# accent on an otherwise plain white table; every structural line is
+# plain black, matching a classic "three-line" academic table (a rule
+# above the header, a rule below the header, and a rule below the last
+# row) rather than a filled/banded grid.
+liser_bleu <- "#000066"
+
 xlsx_header_style <- function() {
   createStyle(
-    textDecoration = "bold", fgFill = "#1F4E78", fontColour = "#FFFFFF",
+    textDecoration = "bold", fontColour = liser_bleu, fgFill = "#FFFFFF",
     fontSize = 11, halign = "center", valign = "center", wrapText = TRUE,
-    border = "TopBottom"
+    border = "TopBottom", borderColour = "#000000", borderStyle = "thin"
   )
 }
-
-xlsx_band_style <- function() createStyle(fgFill = "#EEF2F8")
 
 # Every body cell wraps its text and centers it (both horizontally and
 # vertically) so a fixed, narrow column width never truncates or
 # misaligns a value - long text wraps onto extra lines instead of
-# spilling or being cut off.
-xlsx_body_style <- function() createStyle(wrapText = TRUE, halign = "center", valign = "center")
+# spilling or being cut off. White fill (not "no fill") so a cell
+# retains its plain background even where Excel's own alternating
+# shading or theme would otherwise show through.
+xlsx_body_style <- function() createStyle(wrapText = TRUE, halign = "center", valign = "center", fgFill = "#FFFFFF")
+
+# The closing rule of the three-line table: a plain black line under
+# the very last row, applied on its own (not part of xlsx_body_style,
+# since only the final row gets it).
+xlsx_bottom_rule_style <- function() createStyle(border = "Bottom", borderColour = "#000000", borderStyle = "thin")
 
 # Fixed column width, in Excel character-width units: wide enough for
 # an intervention name to read comfortably, uniformly narrow (~95px)
@@ -35,10 +48,13 @@ xlsx_intervention_col_width <- 45
 xlsx_default_col_width <- 15
 
 #' Write one data frame to one styled worksheet of an (already
-#' created) workbook: bold coloured header (wrapped, centered), frozen
-#' header row and leading columns, fixed column widths, wrapped and
-#' centered body cells, light banding on alternating rows, and number
-#' formats for the named columns.
+#' created) workbook, in a plain "three-line" academic table style:
+#' white background throughout, no worksheet gridlines, no cell
+#' borders except a black rule above the header, another below the
+#' header, and a closing one below the last row. Column headers are
+#' bold and set in the LISER blue accent colour; body cells are
+#' wrapped and centered with fixed column widths so nothing truncates
+#' or spills. Number formats are applied for the named columns.
 #'
 #' @param wb An openxlsx Workbook (from createWorkbook())
 #' @param sheet_name Name for the new worksheet
@@ -52,20 +68,19 @@ write_xlsx_sheet <- function(wb, sheet_name, df, freeze_col = 1,
                               decimal_cols = character(0),
                               integer_cols = character(0)) {
   df <- as.data.frame(df)
-  addWorksheet(wb, sheet_name)
+  addWorksheet(wb, sheet_name, gridLines = FALSE)
   writeData(wb, sheet_name, df, headerStyle = xlsx_header_style())
   freezePane(wb, sheet_name, firstActiveRow = 2, firstActiveCol = freeze_col + 1)
 
-  col_widths <- ifelse(names(df) == "Intervention", xlsx_intervention_col_width, xlsx_default_col_width)
+  wide_cols <- names(df) == "Intervention" | grepl("reference|source", names(df), ignore.case = TRUE)
+  col_widths <- ifelse(wide_cols, xlsx_intervention_col_width, xlsx_default_col_width)
   setColWidths(wb, sheet_name, cols = seq_along(df), widths = col_widths)
 
   n <- nrow(df) + 1
   if (n >= 2) {
     addStyle(wb, sheet_name, xlsx_body_style(), rows = 2:n, cols = seq_along(df), gridExpand = TRUE, stack = TRUE)
-  }
-  if (n >= 3) {
-    band_rows <- seq(3, n, by = 2)
-    addStyle(wb, sheet_name, xlsx_band_style(), rows = band_rows, cols = seq_along(df), gridExpand = TRUE, stack = TRUE)
+    # Closing rule of the three-line table, on the last row only.
+    addStyle(wb, sheet_name, xlsx_bottom_rule_style(), rows = n, cols = seq_along(df), gridExpand = TRUE, stack = TRUE)
   }
 
   apply_fmt <- function(cols, style) {
@@ -103,6 +118,51 @@ save_xlsx <- function(wb, name, dir) {
   )
   strip_unused_drawing_refs(path)
   path
+}
+
+#' Add a "Sources & methodology" worksheet listing the bibliographic
+#' references behind this pipeline's methods, so every delivered
+#' workbook is traceable back to its source literature on its own,
+#' without depending on an accompanying note. Kept as one shared list
+#' (rather than repeated ad hoc per script) so a citation fixed here is
+#' fixed everywhere it appears.
+#'
+#' @param wb An openxlsx Workbook
+#' @param topics Character vector of which reference rows to include
+#'   (subset of names(pipeline_references())); default is all of them
+add_sources_sheet <- function(wb, topics = names(pipeline_references())) {
+  refs <- pipeline_references()[topics]
+  df <- data.frame(
+    Topic     = names(refs),
+    Reference = vapply(refs, `[[`, character(1), "citation"),
+    `Used for` = vapply(refs, `[[`, character(1), "used_for"),
+    check.names = FALSE
+  )
+  write_xlsx_sheet(wb, "Sources & methodology", df, freeze_col = 0)
+}
+
+#' The pipeline's methodology references, keyed by topic. Describes
+#' each method in generic terms (approach + what it is used for)
+#' rather than naming a specific source publication or country, since
+#' this deliverable is Senegal's own analysis - not a replication
+#' credited to another country's study. Centralised here (rather than
+#' repeated per script) so there is exactly one place to refine a
+#' description.
+pipeline_references <- function() {
+  list(
+    "Cost-effectiveness threshold (CET)" = list(
+      citation = "Health-opportunity-cost cost-effectiveness threshold, estimated from Senegal's own GBD 2023 disease-burden data. See config.R for the current working value and how to revise it.",
+      used_for = "Senegal reference CET of $485/DALY averted (config.R); league-table ICER cut-off and affordable-package definition (R/09_priority_setting_analysis.R)"
+    ),
+    "Constrained optimization" = list(
+      citation = "Budget-constrained coverage-optimization approach: linear programming that maximises net health benefit (DALYs averted net of opportunity cost) subject to a consumables-budget constraint, a standard method in health-benefits-package prioritization analysis.",
+      used_for = "Scenario comparison and program-inclusion-rate tables (R/18_constrained_optimization.R, main_optimization_senegal.R)"
+    ),
+    "Distributional cost-effectiveness analysis (DCEA)" = list(
+      citation = "Equity-stratified distributional cost-effectiveness analysis (wealth-quintile and urban/rural strata), following standard DCEA methodology.",
+      used_for = "Equity module (R/10-17_dcea_*.R, main_dcea.R) - deferred this round pending input-data refinement"
+    )
+  )
 }
 
 #' Save a ggplot object as a PNG file
@@ -146,8 +206,7 @@ league_table_display_columns <- c(
   net_dalys_realistic                = "Net DALYs averted, realistic implementation",
   diff_net_dalys                      = "Difference in net DALYs averted",
   health_system_value_usd               = "$ value to the health system of implementation",
-  zero_case_volume_flag                   = "Alert: zero case volume/coverage",
-  no_target_population_flag                 = "Alert: no target population"
+  source_reference                        = "Effectiveness source / reference"
 )
 
 #' Build a league-table-shaped worksheet inside an existing workbook
