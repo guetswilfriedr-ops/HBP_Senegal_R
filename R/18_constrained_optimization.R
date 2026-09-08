@@ -440,6 +440,54 @@ build_scenario_comparison_table <- function(scenario_results) {
   out
 }
 
+#' Intervention-level parameter table: DALYs averted per patient, cost
+#' per case, ICER, source of the effectiveness evidence, and the
+#' demand/cost figures that feed the optimization - the same
+#' intervention-level detail behind every scenario result, independent
+#' of which scenario is run. One row per intervention considered
+#' (i.e. every league_table row with a usable cost/effectiveness/case
+#' figure - see optimize_benefit_package()'s own filter).
+#'
+#' @param league_table funnel$league_table (R/05_league_table.R)
+#' @return A data frame ready for write_xlsx_sheet()
+build_supp_table_interventions <- function(league_table) {
+  league_table %>%
+    filter(!is.na(dalys_final), !is.na(unit_cost_final_usd), !is.na(cases_full_2023), cases_full_2023 > 0) %>%
+    transmute(
+      Program                                   = main_category,
+      Intervention                              = intervention,
+      `DALYs averted per patient`               = dalys_final,
+      `Cost per case ($)`                       = unit_cost_final_usd,
+      `ICER ($/DALY averted)`                   = icer_usd,
+      `Source of effectiveness evidence`        = source_reference,
+      `Total number of cases in need`           = cases_full_2023,
+      `Annual consumables cost ($)`             = total_cost_full_usd
+    ) %>%
+    arrange(`ICER ($/DALY averted)`)
+}
+
+#' Health outcomes and resource use by intervention under one solved
+#' scenario - the per-intervention detail behind a scenario's headline
+#' numbers (build_scenario_comparison_table()), with the disease
+#' program attached so it can be read/filtered on its own.
+#'
+#' @param result A single list(package=, summary=) as returned by
+#'   optimize_benefit_package()
+#' @return A data frame ready for write_xlsx_sheet()
+build_supp_table_outcomes <- function(result) {
+  p <- result$package
+  data.frame(
+    Program                                = p$main_category,
+    Intervention                           = p$intervention,
+    `Percentage of cases in need covered`  = round(100 * p$coverage_share, 1),
+    `Total cases covered`                  = round(p$cases_covered),
+    `DALYs averted`                        = round(p$dalys_averted_solution, 2),
+    `Consumable expenditure required ($)`  = round(p$budget_cost_incurred_usd),
+    check.names = FALSE
+  ) %>%
+    arrange(desc(`DALYs averted`))
+}
+
 #' Rate of inclusion of interventions from different disease programs
 #' in the optimal package, across one or more scenarios - the
 #' program-level view of a scenario-comparison table.
