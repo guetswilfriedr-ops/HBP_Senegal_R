@@ -45,10 +45,18 @@ library(dplyr)
 #' average across the four personnel-time channels.
 #'
 #' This is the NEED side only, and only at the level of total "medical
-#' personnel" time - the raw data does not split minutes by cadre
-#' (doctor vs. nurse vs. pharmacist, etc.), so this feeds a single
-#' pooled-workforce time constraint (find_optimal_package()'s hr_needs
-#' with one column), not Mohan et al.'s per-cadre bottleneck analysis.
+#' personnel" time, pooled across cadres - a per-cadre breakdown DOES
+#' exist elsewhere in the raw data (see build_hr_needs_by_cadre()
+#' below, borrowed from Uganda's own HR-needs matrix via the same
+#' name-mapping crosswalk already used for effectiveness fallback),
+#' but only covers the interventions that crosswalk reaches. This
+#' single-pool version has no such gap (95/95 league table
+#' interventions, see below) and is the right choice for a first,
+#' coarser HR-time budget; prefer build_hr_needs_by_cadre() once a
+#' genuine per-cadre bottleneck analysis is wanted and its coverage
+#' gap is acceptable. This function feeds a single pooled-workforce
+#' time constraint (find_optimal_package()'s hr_needs with one
+#' column), not Mohan et al.'s per-cadre bottleneck analysis.
 #' The CAPACITY side (total staff and minutes/year available, ideally
 #' per cadre) is not in this project's raw data at all and has to come
 #' from a Senegal HR source - see hr_capacity_minutes below.
@@ -103,6 +111,58 @@ build_hr_need_minutes <- function(raw_data_path) {
     ) %>%
     group_by(intervention) %>%
     summarise(minutes_per_case = mean(minutes_per_case, na.rm = TRUE), .groups = "drop")
+}
+
+#' Per-cadre (21-cadre) minutes-per-case need, borrowed from Sakshi
+#' Mohan's Uganda HBP Tool via the SAME name-mapping crosswalk this
+#' project already uses for effectiveness fallback
+#' (R/04_effectiveness.R: "OHT Int name mapping recent-old" bridges a
+#' current Senegal/OHT intervention name to an "old" Uganda-tool name,
+#' which "Uganda HBP Tool" then keys on). The raw workbook's "Uganda
+#' HBP Tool" sheet carries a 21-column "HR Needs" block (Medical
+#' Officer/Specialist through Radiotherapy Technician) already filled
+#' in for Uganda - this reads that block and joins it across the same
+#' crosswalk, exactly mirroring how R/04_effectiveness.R borrows that
+#' sheet's dalys_averted_per_patient_uganda column.
+#'
+#' Coverage is necessarily incomplete: only interventions the
+#' crosswalk actually maps reach a value (69/95 of this project's
+#' league table, checked directly - the other 26 have no Uganda
+#' equivalent recorded in the mapping sheet and would need either a
+#' Senegal-specific estimate or a manual analogy to a similar mapped
+#' intervention, the same two options Mohan's own team used to fill
+#' gaps in the Uganda/Malawi data - see her "Inputs from Uganda staff"
+#' tab). Every borrowed value is a Uganda-context proxy, not a
+#' Senegal-specific measurement - same caveat this project already
+#' carries for Tufts/Uganda-borrowed effectiveness ratios.
+#'
+#' @param raw_data_path Path to the project's raw Excel workbook.
+#' @return A data frame: intervention (Senegal/OHT name), then one
+#'   column per cadre (21 columns, Uganda's cadre names verbatim) -
+#'   NA for an intervention/cadre the crosswalk could not reach.
+build_hr_needs_by_cadre <- function(raw_data_path) {
+  uganda_header <- openxlsx::read.xlsx(raw_data_path, sheet = "Uganda HBP Tool", colNames = FALSE)
+  cadre_names   <- as.character(uganda_header[3, 68:88])
+
+  uganda <- openxlsx::read.xlsx(raw_data_path, sheet = "Uganda HBP Tool", colNames = FALSE, startRow = 4)
+  uganda_hr <- uganda[, c(7, 68:88)]
+  names(uganda_hr) <- c("old_intervention_name", cadre_names)
+  uganda_hr <- uganda_hr %>%
+    mutate(across(all_of(cadre_names), ~ suppressWarnings(as.numeric(.x)))) %>%
+    filter(!is.na(old_intervention_name)) %>%
+    # An old intervention name can appear on more than one Uganda HBP
+    # Tool row - keep the first, exactly as R/04_effectiveness.R does
+    # for the same sheet, so this join cannot fan out into extra rows.
+    distinct(old_intervention_name, .keep_all = TRUE)
+
+  mapping <- openxlsx::read.xlsx(raw_data_path, sheet = "OHT Int name mapping recent-old", colNames = FALSE, startRow = 2)
+  mapping <- mapping[, c(1, 3)]
+  names(mapping) <- c("recent_intervention", "old_intervention")
+
+  mapping %>%
+    distinct(recent_intervention, .keep_all = TRUE) %>%
+    left_join(uganda_hr, by = c("old_intervention" = "old_intervention_name")) %>%
+    select(intervention = recent_intervention, all_of(cadre_names))
 }
 
 #' Solve for the health-maximizing coverage of each intervention,
