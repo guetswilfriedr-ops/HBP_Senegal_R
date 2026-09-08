@@ -205,8 +205,7 @@ league_table_display_columns <- c(
   net_dalys_full                    = "Net DALYs averted, full implementation",
   net_dalys_realistic                = "Net DALYs averted, realistic implementation",
   diff_net_dalys                      = "Difference in net DALYs averted",
-  health_system_value_usd               = "$ value to the health system of implementation",
-  source_reference                        = "Effectiveness source / reference"
+  health_system_value_usd               = "$ value to the health system of implementation"
 )
 
 #' Build a league-table-shaped worksheet inside an existing workbook

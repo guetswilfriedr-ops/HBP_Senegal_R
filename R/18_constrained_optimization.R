@@ -459,7 +459,6 @@ build_supp_table_interventions <- function(league_table) {
       `DALYs averted per patient`               = dalys_final,
       `Cost per case ($)`                       = unit_cost_final_usd,
       `ICER ($/DALY averted)`                   = icer_usd,
-      `Source of effectiveness evidence`        = source_reference,
       `Total number of cases in need`           = cases_full_2023,
       `Annual consumables cost ($)`             = total_cost_full_usd
     ) %>%

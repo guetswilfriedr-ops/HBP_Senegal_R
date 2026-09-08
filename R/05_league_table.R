@@ -123,6 +123,29 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
       zero_case_volume_flag = passed_4 & (
         (!is.na(cases_full_2023) & cases_full_2023 == 0) |
         (!is.na(coverage_2023) & coverage_2023 == 0)
+      ),
+      # Per-intervention bibliographic reference for the DALYs-averted
+      # figure, so an external effectiveness source is traceable from
+      # the step-by-step pipeline trace (pipeline_steps.xlsx) rather
+      # than only from a separate methodology note. Computed here (on
+      # `funnel`, before the league-table split) so it reaches the
+      # step 3/4 traces as well as the league table itself. This is a
+      # traceability field, not a results-table column - kept out of
+      # league_table_final.xlsx and the Table 4-6 exports (R/08_export.R,
+      # R/09_priority_setting_analysis.R), which stay publication-clean.
+      # A Tufts-sourced figure cites the actual study (author, year,
+      # title, journal); a Uganda-fallback figure names the tool it was
+      # drawn from; Senegal's own data needs no external citation.
+      source_reference = case_when(
+        effectiveness_status == "Tufts ratio" ~ paste0(
+          coalesce(primary_author, "Unknown author"), " (", coalesce(as.character(issue_year), "n.d."), "). ",
+          trimws(gsub("[.[:space:]]+$", "", coalesce(title, "[title not recorded]"))), ".",
+          if_else(!is.na(journal_name), paste0(" ", journal_name, "."), ""),
+          " (Tufts CEA literature database, article ", article_id, ", ratio #", ratio_number, ")"
+        ),
+        effectiveness_status == "Secondary literature source" ~
+          "Cross-country HBP costing tool (Uganda HBP Tool) - DALYs-averted-per-patient figure used as a fallback in the absence of a usable Tufts ratio",
+        TRUE ~ NA_character_
       )
     )
 
@@ -138,24 +161,6 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
       net_dalys_full            = total_dalys_full - total_cost_full_usd / cet_usd_per_daly,
       diff_net_dalys            = net_dalys_full - net_dalys_realistic,
       health_system_value_usd   = diff_net_dalys * cet_usd_per_daly,
-      # Per-intervention bibliographic reference for the DALYs-averted
-      # figure, so an external effectiveness source is traceable
-      # directly from the table it appears in rather than only from a
-      # separate methodology note. A Tufts-sourced figure cites the
-      # actual study (author, year, title, journal); a Uganda-fallback
-      # figure names the tool it was drawn from; Senegal's own data
-      # needs no external citation.
-      source_reference = case_when(
-        effectiveness_status == "Tufts ratio" ~ paste0(
-          coalesce(primary_author, "Unknown author"), " (", coalesce(as.character(issue_year), "n.d."), "). ",
-          trimws(gsub("[.[:space:]]+$", "", coalesce(title, "[title not recorded]"))), ".",
-          if_else(!is.na(journal_name), paste0(" ", journal_name, "."), ""),
-          " (Tufts CEA literature database, article ", article_id, ", ratio #", ratio_number, ")"
-        ),
-        effectiveness_status == "Secondary literature source" ~
-          "Cross-country HBP costing tool (Uganda HBP Tool) - DALYs-averted-per-patient figure used as a fallback in the absence of a usable Tufts ratio",
-        TRUE ~ NA_character_
-      ),
       # DALYs averted per $1,000 spent is the reciprocal of the ICER,
       # expressed at a more legible scale for reading and charting
       dalys_per_1000usd         = if_else(!is.na(icer_usd) & icer_usd != 0, 1000 / icer_usd, NA_real_),
@@ -234,13 +239,13 @@ build_intervention_funnel <- function(oht_case_data, top20_causes,
            target_countries, comparator_modality,
            time_horizon, perspective_author, costs_discounted, outcome_discounted,
            total_quality_score,
-           effectiveness_note)
+           effectiveness_note, source_reference)
 
   step4_case_volume <- funnel %>%
     filter(passed_4) %>%
     select(intervention, main_category, sub_category, gbd_cause, pct_dalys_lost,
            cost_status, unit_cost_final_usd,
-           effectiveness_status, dalys_final,
+           effectiveness_status, dalys_final, source_reference,
            cases_scaleup_2023, cases_full_2023,
            no_target_population_flag, zero_case_volume_flag)
 

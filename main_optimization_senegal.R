@@ -197,7 +197,6 @@ write_xlsx_sheet(
   decimal_cols = c("Coverage share solved (%)", "DALYs averted"),
   integer_cols = "Cases covered"
 )
-add_sources_sheet(wb, c("Cost-effectiveness threshold (CET)", "Constrained optimization"))
 save_xlsx(wb, "optimization_results", config$output_tables_dir)
 
 # ------------------------------------------------------------
@@ -303,7 +302,6 @@ write_xlsx_sheet(wb_supp, "ST7 - Substitutes", st7, freeze_col = 0)
 write_xlsx_sheet(wb_supp, "ST8 - Complements", st8, freeze_col = 0)
 write_xlsx_sheet(wb_supp, "ST9 - Salaries by cadre", st9, freeze_col = 0)
 write_xlsx_sheet(wb_supp, "ST10 - Scenarios summary", st10, freeze_col = 1)
-add_sources_sheet(wb_supp, c("Cost-effectiveness threshold (CET)", "Constrained optimization"))
 save_xlsx(wb_supp, "optimization_supplementary_tables", config$output_tables_dir)
 
 cat("\n=== Constrained optimization (Senegal, Stage 1: budget only) ===\n")

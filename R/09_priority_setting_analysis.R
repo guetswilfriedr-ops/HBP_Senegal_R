@@ -287,8 +287,7 @@ build_table4_icer_ranking <- function(league_table) {
       `Cases per annum`                              = cases_full_2023,
       `Total cost (full implementation) [$]`         = total_cost_full_usd,
       `Cumulative cost [$]`                          = cumsum(coalesce(total_cost_full_usd, 0)),
-      `Total DALYs averted (full implementation)`    = total_dalys_full,
-      `Effectiveness source / reference`             = source_reference
+      `Total DALYs averted (full implementation)`    = total_dalys_full
     )
 }
 
@@ -316,8 +315,7 @@ build_table5_net_benefit_ranking <- function(league_table, cet_usd_per_daly) {
       `Total cost (full implementation) [$]`             = total_cost_full_usd,
       `Cumulative cost [$]`                               = cumulative_cost_full_usd,
       `Total DALYs averted (full implementation)`          = total_dalys_full,
-      `Net DALYs averted (full implementation)`             = net_dalys_full,
-      `Effectiveness source / reference`                     = source_reference
+      `Net DALYs averted (full implementation)`             = net_dalys_full
     )
 }
 
@@ -351,8 +349,7 @@ build_table6_net_benefit_summary <- function(league_table, cet_usd_per_daly) {
       `Net DALYs averted (full implementation)`                            = net_dalys_full,
       `Net DALYs averted (realistic implementation)`                        = net_dalys_realistic,
       `Difference in net DALYs averted`                                      = diff_net_dalys,
-      `$ value to the health system of implementation`                        = health_system_value_usd,
-      `Effectiveness source / reference`                                       = source_reference
+      `$ value to the health system of implementation`                        = health_system_value_usd
     )
 }
 

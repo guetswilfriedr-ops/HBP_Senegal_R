@@ -81,6 +81,13 @@ write_xlsx_sheet(
   wb_steps, "Category summary", prettify_names(funnel$category_summary), freeze_col = 1,
   decimal_cols = "GBD cause, % of total DALYs"
 )
+# Methodology traceability belongs here, not in the polished output/
+# tables/ deliverables (league_table_final.xlsx, detailed_findings.xlsx):
+# this is the step-by-step trace an analyst checks to see what happened
+# behind a given number, so it is also where the per-intervention
+# effectiveness source (in "3 - Effectiveness evidence" and
+# "4 - Case volume" above) and the method descriptions below belong.
+add_sources_sheet(wb_steps, c("Cost-effectiveness threshold (CET)", "Constrained optimization"))
 save_xlsx(wb_steps, "pipeline_steps", config$processed_data_dir)
 
 # ------------------------------------------------------------
@@ -89,7 +96,6 @@ save_xlsx(wb_steps, "pipeline_steps", config$processed_data_dir)
 # ------------------------------------------------------------
 wb_final <- createWorkbook()
 add_league_table_sheet(wb_final, funnel$league_table)
-add_sources_sheet(wb_final, "Cost-effectiveness threshold (CET)")
 save_xlsx(wb_final, "league_table_final", config$output_tables_dir)
 
 # ------------------------------------------------------------
@@ -176,5 +182,4 @@ write_xlsx_sheet(
   ),
   integer_cols = "N interventions in package"
 )
-add_sources_sheet(wb_findings, "Cost-effectiveness threshold (CET)")
 save_xlsx(wb_findings, "detailed_findings", config$output_tables_dir)
