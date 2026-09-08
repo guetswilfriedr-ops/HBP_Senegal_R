@@ -5,6 +5,7 @@
 # ============================================================
 
 source("config.R")
+source("R/00_liser_style.R")
 source("R/01_import.R")
 source("R/02_cleaning.R")
 source("R/03_costs.R")

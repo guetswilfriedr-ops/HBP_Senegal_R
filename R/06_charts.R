@@ -47,7 +47,7 @@ build_funnel_flow_plot <- function(funnel_summary) {
     geom_rect(
       data = main_boxes,
       aes(xmin = 0, xmax = box_width, ymin = y - box_height / 2, ymax = y + box_height / 2),
-      fill = "#1F4E78", color = "white"
+      fill = liser_bleu, color = "white"
     ) +
     geom_text(
       data = main_boxes, aes(x = box_width / 2, y = y, label = label),
@@ -56,24 +56,24 @@ build_funnel_flow_plot <- function(funnel_summary) {
     geom_rect(
       data = exclusion_boxes,
       aes(xmin = box_width + 2, xmax = box_width + 2 + 5.5, ymin = y - box_height / 2, ymax = y + box_height / 2),
-      fill = "#F4E7E1", color = "#B5533C"
+      fill = liser_rouge_light, color = liser_rouge
     ) +
     geom_text(
       data = exclusion_boxes, aes(x = box_width + 2 + 2.75, y = y, label = label),
-      color = "#7A3324", size = 3.1, lineheight = 0.95
+      color = liser_rouge_fonce, size = 3.1, lineheight = 0.95
     ) +
     geom_segment(
       data = arrows, aes(x = x, xend = xend, y = y, yend = yend),
-      arrow = arrow(length = unit(0.2, "cm")), color = "#1F4E78"
+      arrow = arrow(length = unit(0.2, "cm")), color = liser_bleu
     ) +
     geom_segment(
       data = side_arrows, aes(x = x, xend = xend, y = y, yend = yend),
-      arrow = arrow(length = unit(0.15, "cm")), color = "#B5533C"
+      arrow = arrow(length = unit(0.15, "cm")), color = liser_rouge
     ) +
     coord_cartesian(xlim = c(-0.5, box_width + 2 + 6), clip = "off") +
     theme_void() +
     labs(title = "Intervention funnel") +
-    theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
+    theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold", color = liser_bleu))
 }
 
 # Short label for the exclusion side-box at each step

@@ -27,6 +27,7 @@
 # ============================================================
 
 source("config.R")
+source("R/00_liser_style.R")
 source("R/01_import.R")
 source("R/02_cleaning.R")
 source("R/03_costs.R")
@@ -83,126 +84,169 @@ table2 <- build_scenario_comparison_table(scenario_results)
 table3 <- build_program_inclusion_table(scenario_results)
 
 # ------------------------------------------------------------
-# Figure 1 equivalent: health-system resource use by program. The
-# standard version of this chart (see the reference reporting
-# structure) puts one bar PER RESOURCE on the x-axis (each
-# health-worker cadre, plus the consumables budget), stacked and
-# colour-coded by the disease program consuming that resource, each
-# bar topped with the total % of that resource required. Senegal has
-# only one resource modelled so far (the consumables budget - no
-# workforce-cadre data yet, Stage 2), so this is a single-bar version
-# of that same chart: one 100%-stacked column, segmented by program.
+# Figure 1: health-system resource use by program. The standard
+# version of this chart (see the reference reporting structure) puts
+# one bar PER RESOURCE on the x-axis - each health-worker cadre, plus
+# the consumables budget - stacked and colour-coded by the disease
+# program consuming that resource, one panel per scenario. Senegal
+# does not have health-worker-cadre data yet (Stage 2), so those five
+# bars are drawn as explicit "not yet available" placeholders rather
+# than left out - the resource axis stays complete and comparable to
+# the standard version of this chart, and the gap is visible rather
+# than silently absent.
 # ------------------------------------------------------------
-budget_pkg <- scenario_budget$package %>%
-  dplyr::filter(coverage_share > 1e-6) %>%
-  dplyr::group_by(main_category) %>%
-  dplyr::summarise(spend_usd = sum(budget_cost_incurred_usd), .groups = "drop") %>%
-  dplyr::mutate(
-    pct_of_budget = 100 * spend_usd / config$consumables_budget_usd,
-    resource = "Consumables\nbudget"
-  ) %>%
-  dplyr::arrange(main_category)
-
-budget_pkg_total_pct <- sum(budget_pkg$pct_of_budget)
-
-# LISER palette (see the liser-style skill): step through the Bleu,
-# Cyan, and Rouge ramps rather than an arbitrary categorical palette,
-# so this chart reads as one system with the rest of this project's
-# LISER-aligned outputs.
-liser_categorical_palette <- c(
-  "#000066", "#0099FF", "#E30613", "#4A3D8B", "#00B0E9",
-  "#EB4B30", "#7366A4", "#56C4EF", "#F07E5D", "#9D93C1"
+resource_levels <- c(
+  "Doctor/\nClinical officer", "Nursing\nstaff", "Pharmaceutical\nstaff",
+  "Mental Health\nstaff", "Nutrition\nstaff", "Consumables\nbudget"
 )
+scenario_levels <- c("(i) No budget constraint (CET only)", "(ii) Provisional budget ($120M)")
 
-# Shared LISER chart theme: white canvas, no border box, light horizontal
-# guides only, bold LISER-blue titles - used by both figures below so the
-# two read as one visual family.
-liser_chart_theme <- function(base_size = 12) {
-  theme_minimal(base_size = base_size, base_family = "sans") +
-    theme(
-      plot.title = element_text(face = "bold", color = "#000066", size = rel(1.15), margin = margin(b = 4)),
-      plot.subtitle = element_text(color = "grey35", size = rel(0.85), margin = margin(b = 14)),
-      plot.caption = element_text(color = "grey55", size = rel(0.68), hjust = 0, margin = margin(t = 12)),
-      plot.title.position = "plot",
-      plot.caption.position = "plot",
-      plot.background = element_rect(fill = "white", color = NA),
-      panel.background = element_rect(fill = "white", color = NA),
-      axis.title = element_text(color = "grey25", size = rel(0.85)),
-      axis.text = element_text(color = "grey25", size = rel(0.85)),
-      axis.text.y = element_text(face = "bold", color = "#000066"),
-      panel.grid.major.x = element_line(color = "grey90", linewidth = 0.35),
-      panel.grid.major.y = element_blank(),
-      panel.grid.minor = element_blank(),
-      axis.ticks = element_blank(),
-      legend.position = "none",
-      plot.margin = margin(16, 20, 12, 16)
-    )
+build_program_share <- function(result, denom_usd) {
+  result$package %>%
+    dplyr::filter(coverage_share > 1e-6) %>%
+    dplyr::group_by(main_category) %>%
+    dplyr::summarise(spend_usd = sum(budget_cost_incurred_usd), .groups = "drop") %>%
+    dplyr::mutate(pct = 100 * spend_usd / denom_usd) %>%
+    dplyr::arrange(main_category)
 }
 
-fig1_budget_use <- ggplot(budget_pkg, aes(x = resource, y = pct_of_budget, fill = main_category)) +
-  geom_col(width = 0.45, color = "white", linewidth = 0.4) +
+program_data <- dplyr::bind_rows(
+  build_program_share(scenario_unconstrained, config$consumables_budget_usd) %>%
+    dplyr::mutate(scenario = scenario_levels[1]),
+  build_program_share(scenario_budget, config$consumables_budget_usd) %>%
+    dplyr::mutate(scenario = scenario_levels[2])
+) %>%
+  dplyr::mutate(
+    resource = factor("Consumables\nbudget", levels = resource_levels),
+    scenario = factor(scenario, levels = scenario_levels)
+  )
+
+resource_totals <- program_data %>%
+  dplyr::group_by(scenario) %>%
+  dplyr::summarise(total_pct = sum(pct), .groups = "drop") %>%
+  dplyr::mutate(label_y = total_pct + max(total_pct) * 0.04)
+
+placeholder_data <- expand.grid(
+  scenario = factor(scenario_levels, levels = scenario_levels),
+  resource = factor(resource_levels[1:5], levels = resource_levels),
+  stringsAsFactors = FALSE
+)
+
+fig1_budget_use <- ggplot() +
+  geom_col(
+    data = placeholder_data, aes(x = resource, y = 100),
+    fill = liser_gris_light, width = 0.6
+  ) +
   geom_text(
-    aes(label = ifelse(pct_of_budget >= 4, paste0(round(pct_of_budget, 1), "%"), "")),
-    position = position_stack(vjust = 0.5), size = 3, color = "white", fontface = "bold"
+    data = placeholder_data, aes(x = resource, y = 50, label = "Data not yet\navailable\n(Stage 2)"),
+    size = 2.3, color = "grey40", lineheight = 0.9, fontface = "italic"
   ) +
-  annotate(
-    "text", x = 1, y = budget_pkg_total_pct + 3,
-    label = paste0(round(budget_pkg_total_pct, 1), "%"), color = "#000066", fontface = "bold", size = 4
+  geom_col(
+    data = program_data, aes(x = resource, y = pct, fill = main_category),
+    width = 0.6, color = "white", linewidth = 0.3
   ) +
-  scale_fill_manual(values = liser_categorical_palette, name = NULL) +
-  scale_y_continuous(limits = c(0, 108), breaks = seq(0, 100, 25), labels = paste0(seq(0, 100, 25), "%"), expand = c(0, 0)) +
-  coord_cartesian(clip = "off") +
-  guides(fill = guide_legend(ncol = 2, byrow = TRUE)) +
+  geom_text(
+    data = program_data,
+    aes(x = resource, y = pct, label = ifelse(pct >= 4, paste0(round(pct, 1), "%"), "")),
+    position = position_stack(vjust = 0.5), size = 2.6, color = "white", fontface = "bold"
+  ) +
+  geom_text(
+    data = resource_totals,
+    aes(x = resource_levels[6], y = label_y, label = paste0(round(total_pct, 1), "%")),
+    color = liser_bleu, fontface = "bold", size = 3.6
+  ) +
+  scale_x_discrete(limits = resource_levels, drop = FALSE) +
+  scale_fill_manual(values = liser_categorical_palette, name = NULL, na.translate = FALSE) +
+  scale_y_continuous(
+    breaks = seq(0, 150, 25), labels = paste0(seq(0, 150, 25), "%"),
+    expand = expansion(mult = c(0, 0.1))
+  ) +
+  facet_wrap(~scenario, ncol = 1) +
+  guides(fill = guide_legend(ncol = 3, byrow = TRUE)) +
   labs(
     title = "Health-system resource use by program",
-    subtitle = stringr::str_wrap(paste0(
-      "Provisional budget scenario ($", format(config$consumables_budget_usd / 1e6, big.mark = ","),
-      "M placeholder) - percentage of resource required, by disease program"
-    ), width = 55),
+    subtitle = "Percentage of each resource required, by disease program, under the two budget scenarios",
     x = "Resource", y = "Percentage of resource required",
-    caption = stringr::str_wrap(
-      "Only the consumables budget is modelled so far; health-worker-cadre resources await Senegal-specific workforce-capacity data (Stage 2).",
-      width = 60
-    )
+    caption = stringr::str_wrap(paste0(
+      "Health-worker-cadre resources await Senegal-specific workforce-capacity data (Stage 2); only the ",
+      "consumables budget is modelled so far. Scenario (i) exceeds 100% because it funds every cost-effective ",
+      "intervention regardless of the provisional $", format(config$consumables_budget_usd / 1e6, big.mark = ","), "M budget."
+    ), width = 110)
   ) +
   liser_chart_theme() +
   theme(
     legend.position = "bottom", legend.text = element_text(size = 8.5),
-    axis.text.x = element_text(face = "bold", color = "#000066"),
-    panel.grid.major.x = element_blank(),
-    panel.grid.major.y = element_line(color = "grey90", linewidth = 0.35)
+    axis.text.x = element_text(face = "bold", color = liser_bleu, size = rel(0.72)),
+    strip.text = element_text(face = "bold", color = liser_bleu, size = rel(1))
   )
 
-export_figure(fig1_budget_use, "optimization_fig1_budget_use_by_program", config$output_figures_dir, width = 8, height = 8.5)
+export_figure(fig1_budget_use, "optimization_fig1_budget_use_by_program", config$output_figures_dir, width = 9, height = 11)
 
 # ------------------------------------------------------------
-# Figure 2 equivalent: marginal net DALYs averted from an additional
-# $1000 in the consumables budget. Single-resource version (no HR
-# data yet, so no cadre-level bars to compute).
+# Figure 2: marginal value of investing $1000 in different
+# health-system resources, one panel per scenario, same resource axis
+# as Figure 1 (health-worker cadres shown as "not yet available"
+# placeholders, Stage 2).
 # ------------------------------------------------------------
 scenario_plus1000 <- optimize_benefit_package(
   league_table, cet_usd_per_daly = config$cet_usd_per_daly, budget_usd = config$consumables_budget_usd + 1000
 )
 marginal_value_budget <- scenario_plus1000$summary$net_dalys_averted - scenario_budget$summary$net_dalys_averted
 
-fig2_marginal_value <- ggplot(
-  data.frame(Resource = "Consumables\nbudget", Value = marginal_value_budget),
-  aes(x = Resource, y = Value)
-) +
-  geom_col(fill = "#000066", width = 0.45) +
-  geom_text(aes(label = paste0("+", format(round(Value, 2), nsmall = 2), " DALYs")), hjust = -0.12, size = 4, color = "#000066", fontface = "bold") +
+# Under no budget constraint at all, every intervention with a
+# positive net health benefit is already fully covered (confirmed by
+# n_interventions_in_package == n_interventions_positive_nethealth in
+# Table 2) - an additional $1000 cannot buy any more health, so the
+# marginal value of the consumables budget is exactly 0 in that
+# scenario, not a figure requiring its own solve (Inf + 1000 = Inf).
+marginal_data <- data.frame(
+  resource = factor(rep(resource_levels[6], 2), levels = resource_levels),
+  scenario = factor(scenario_levels, levels = scenario_levels),
+  value = c(0, marginal_value_budget)
+)
+
+placeholder_marginal <- expand.grid(
+  scenario = factor(scenario_levels, levels = scenario_levels),
+  resource = factor(resource_levels[1:5], levels = resource_levels),
+  stringsAsFactors = FALSE
+)
+
+fig2_marginal_value <- ggplot() +
+  geom_col(
+    data = placeholder_marginal, aes(x = resource, y = max(marginal_data$value) * 1.15),
+    fill = liser_gris_light, width = 0.6
+  ) +
+  geom_text(
+    data = placeholder_marginal, aes(x = resource, y = max(marginal_data$value) * 0.55, label = "Data not yet\navailable (Stage 2)"),
+    size = 2.3, color = "grey40", lineheight = 0.9, fontface = "italic"
+  ) +
+  geom_col(data = marginal_data, aes(x = resource, y = value), fill = liser_bleu, width = 0.6) +
+  geom_text(
+    data = marginal_data,
+    aes(x = resource, y = value, label = paste0("+", format(round(value, 2), nsmall = 2), " DALYs")),
+    hjust = -0.1, size = 3, color = liser_bleu, fontface = "bold"
+  ) +
   coord_flip(clip = "off") +
-  scale_y_continuous(limits = c(0, marginal_value_budget * 1.35), expand = expansion(mult = c(0, 0.02))) +
+  scale_x_discrete(limits = rev(resource_levels), drop = FALSE) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.18))) +
+  facet_wrap(~scenario, ncol = 1) +
   labs(
-    title = "Marginal value of investing $1000 in the consumables budget",
-    subtitle = "Net DALYs averted gained from an additional $1000 added to the optimal package's budget",
-    x = NULL, y = "Net DALYs averted",
-    caption = "Health-worker-cadre resources (nurses, pharmacy staff, etc.) await Senegal-specific workforce-capacity data (Stage 2)."
+    title = "Marginal value of investing $1000 in different health-system resources",
+    subtitle = "Additional net DALYs averted from $1,000 more of each resource, under the two budget scenarios",
+    x = "Resource", y = "Net DALYs averted",
+    caption = stringr::str_wrap(paste0(
+      "Health-worker-cadre resources await Senegal-specific workforce-capacity data (Stage 2). Scenario (i) is ",
+      "0 by construction: with no budget constraint, every intervention with a positive net health benefit is ",
+      "already fully covered, so extra budget cannot buy more health."
+    ), width = 110)
   ) +
   liser_chart_theme() +
-  theme(axis.text.y = element_text(face = "bold", color = "#000066", size = rel(1)))
+  theme(
+    axis.text.y = element_text(face = "bold", color = liser_bleu, size = rel(0.85)),
+    strip.text = element_text(face = "bold", color = liser_bleu, size = rel(1))
+  )
 
-export_figure(fig2_marginal_value, "optimization_fig2_marginal_value", config$output_figures_dir, width = 9.5, height = 4.2)
+export_figure(fig2_marginal_value, "optimization_fig2_marginal_value", config$output_figures_dir, width = 9, height = 8)
 
 # ------------------------------------------------------------
 # Excel export: Table 2, Table 3, and per-scenario package detail

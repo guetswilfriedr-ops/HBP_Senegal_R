@@ -108,28 +108,28 @@ build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
       aes(xmin = xmin, xmax = xmax, ymin = log_floor, ymax = dalys_per_1000usd, fill = included),
       color = "white", linewidth = 0.1
     ) +
-    scale_fill_manual(values = c(`TRUE` = "#1F4E78", `FALSE` = "#B5533C"), guide = "none") +
-    geom_hline(yintercept = threshold_efficiency, color = "#C0392B", linetype = "dashed", linewidth = 0.8) +
-    geom_vline(xintercept = boundary_x, color = "#6C757D", linetype = "dashed", linewidth = 0.8) +
+    scale_fill_manual(values = c(`TRUE` = "#000066", `FALSE` = "#E30613"), guide = "none") +
+    geom_hline(yintercept = threshold_efficiency, color = "#990000", linetype = "dashed", linewidth = 0.8) +
+    geom_vline(xintercept = boundary_x, color = "#7C797C", linetype = "dashed", linewidth = 0.8) +
     annotate(
       "text", x = min(df$xmin), y = threshold_efficiency, vjust = -0.6, hjust = 0,
       label = paste0("CET threshold: ", round(threshold_efficiency, 1), " DALYs / $1,000"),
-      color = "#C0392B", size = 3, fontface = "italic"
+      color = "#990000", size = 3, fontface = "italic"
     ) +
     annotate(
       "segment", x = best_value$xmax, xend = best_value$xmax + x_span * 0.10,
       y = best_value$dalys_per_1000usd, yend = best_value$dalys_per_1000usd * 0.4,
-      arrow = arrow(length = unit(0.15, "cm")), color = "#1F4E78"
+      arrow = arrow(length = unit(0.15, "cm")), color = "#000066"
     ) +
     annotate(
       "text", x = best_value$xmax + x_span * 0.11, y = best_value$dalys_per_1000usd * 0.4,
       label = paste0("Best value (rank 1):\n", strwrap(best_value$intervention, width = 26) %>% paste(collapse = "\n")),
-      hjust = 0, size = 2.6, color = "#1F4E78", lineheight = 0.9
+      hjust = 0, size = 2.6, color = "#000066", lineheight = 0.9
     ) +
     annotate(
       "segment", x = last_included$xmax, xend = last_included$xmax - x_span * 0.12,
       y = last_included$dalys_per_1000usd, yend = last_included$dalys_per_1000usd * 6,
-      arrow = arrow(length = unit(0.15, "cm")), color = "#1F4E78"
+      arrow = arrow(length = unit(0.15, "cm")), color = "#000066"
     ) +
     annotate(
       "text", x = last_included$xmax - x_span * 0.13, y = last_included$dalys_per_1000usd * 6,
@@ -138,12 +138,12 @@ build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
         strwrap(last_included$intervention, width = 26) %>% paste(collapse = "\n"),
         "\n(boundary: ", dollars_millions(boundary_x), ")"
       ),
-      hjust = 1, size = 2.6, color = "#1F4E78", lineheight = 0.9
+      hjust = 1, size = 2.6, color = "#000066", lineheight = 0.9
     ) +
     annotate(
       "segment", x = worst_value$xmax, xend = worst_value$xmax + x_span * 0.08,
       y = worst_value$dalys_per_1000usd, yend = worst_value$dalys_per_1000usd * 4,
-      arrow = arrow(length = unit(0.15, "cm")), color = "#B5533C"
+      arrow = arrow(length = unit(0.15, "cm")), color = "#E30613"
     ) +
     annotate(
       "text", x = worst_value$xmax + x_span * 0.09, y = worst_value$dalys_per_1000usd * 4,
@@ -151,7 +151,7 @@ build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
         "Least cost-effective (rank ", worst_value$icer_rank, "):\n",
         strwrap(worst_value$intervention, width = 26) %>% paste(collapse = "\n")
       ),
-      hjust = 0, size = 2.6, color = "#B5533C", lineheight = 0.9
+      hjust = 0, size = 2.6, color = "#E30613", lineheight = 0.9
     ) +
     scale_x_continuous(labels = dollars_millions, expand = expansion(mult = c(0.01, 0.24))) +
     scale_y_log10(labels = scales::label_comma()) +
@@ -164,8 +164,7 @@ build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
       x = "Cumulative cost, full implementation",
       y = "DALYs averted per $1,000 spent (log scale)"
     ) +
-    theme_minimal(base_size = 10) +
-    theme(plot.title = element_text(face = "bold", size = 13), panel.grid.minor = element_blank())
+    liser_chart_theme(base_size = 10)
 }
 
 #' Figure 6 equivalent: every intervention that reached the league
@@ -189,15 +188,15 @@ build_fig6_plot <- function(league_table, cet_usd_per_daly) {
 
   ggplot(df, aes(x = rank_nhp)) +
     geom_col(aes(y = net_dalys_full, fill = net_dalys_full >= 0), width = 0.85) +
-    geom_line(aes(y = cumulative_cost_full_usd * scale_factor), color = "#E8A33D", linewidth = 1) +
-    geom_hline(yintercept = 0, color = "#C0392B", linetype = "dashed") +
-    geom_vline(xintercept = boundary_rank, color = "#3A7CA5", linetype = "dashed", linewidth = 0.8) +
+    geom_line(aes(y = cumulative_cost_full_usd * scale_factor), color = "#006699", linewidth = 1) +
+    geom_hline(yintercept = 0, color = "#990000", linetype = "dashed") +
+    geom_vline(xintercept = boundary_rank, color = "#7C797C", linetype = "dashed", linewidth = 0.8) +
     annotate(
       "text", x = boundary_rank, y = max(df$net_dalys_full, na.rm = TRUE) * 0.95,
-      angle = 90, hjust = 1, vjust = -0.4, size = 2.5, fontface = "italic", color = "#3A7CA5",
+      angle = 90, hjust = 1, vjust = -0.4, size = 2.5, fontface = "italic", color = "#7C797C",
       label = "Package cutoff: left = to include, right = not"
     ) +
-    scale_fill_manual(values = c(`TRUE` = "#1F4E78", `FALSE` = "#B5533C"), guide = "none") +
+    scale_fill_manual(values = c(`TRUE` = "#000066", `FALSE` = "#E30613"), guide = "none") +
     scale_y_continuous(
       name = "Net DALYs averted (full implementation)",
       labels = number_millions,
@@ -208,12 +207,8 @@ build_fig6_plot <- function(league_table, cet_usd_per_daly) {
       subtitle = "Full implementation (100%). Negative bars: cost exceeds the health opportunity cost of the CET",
       x = "Intervention rank (by net health benefit)"
     ) +
-    theme_minimal(base_size = 10) +
-    theme(
-      plot.title = element_text(face = "bold", size = 13),
-      axis.title.y.right = element_text(color = "#E8A33D"),
-      panel.grid.minor = element_blank()
-    )
+    liser_chart_theme(base_size = 10) +
+    theme(axis.title.y.right = element_text(color = liser_cyan_fonce))
 }
 
 #' Figure 7 equivalent: every intervention in the league table, net
@@ -239,13 +234,13 @@ build_fig7_plot <- function(league_table, cet_usd_per_daly) {
     geom_line(aes(y = net_dalys_realistic, color = "Net DALYs averted"), linewidth = 1, linetype = "dotted") +
     geom_line(aes(y = cumulative_cost_full_usd * scale_factor, color = "Cumulative spend"), linewidth = 1, linetype = "solid") +
     geom_line(aes(y = cumulative_cost_realistic_usd * scale_factor, color = "Cumulative spend"), linewidth = 1, linetype = "dotted") +
-    geom_vline(xintercept = boundary_rank, color = "#3A7CA5", linetype = "dashed", linewidth = 0.8) +
+    geom_vline(xintercept = boundary_rank, color = "#7C797C", linetype = "dashed", linewidth = 0.8) +
     annotate(
       "text", x = boundary_rank, y = max(df$net_dalys_full, na.rm = TRUE) * 0.95,
-      angle = 90, hjust = 1, vjust = -0.4, size = 2.5, fontface = "italic", color = "#3A7CA5",
+      angle = 90, hjust = 1, vjust = -0.4, size = 2.5, fontface = "italic", color = "#7C797C",
       label = "Affordability cutoff: left = affordable, right = not"
     ) +
-    scale_color_manual(values = c("Net DALYs averted" = "#1F4E78", "Cumulative spend" = "#E8A33D")) +
+    scale_color_manual(values = c("Net DALYs averted" = "#000066", "Cumulative spend" = "#006699")) +
     scale_y_continuous(
       name = "Net DALYs averted",
       labels = number_millions,
@@ -257,12 +252,8 @@ build_fig7_plot <- function(league_table, cet_usd_per_daly) {
       x = "Intervention rank (by net health benefit)",
       color = NULL
     ) +
-    theme_minimal(base_size = 10) +
-    theme(
-      plot.title = element_text(face = "bold", size = 13),
-      axis.title.y.right = element_text(color = "#E8A33D"),
-      legend.position = "top", panel.grid.minor = element_blank()
-    )
+    liser_chart_theme(base_size = 10) +
+    theme(axis.title.y.right = element_text(color = liser_cyan_fonce), legend.position = "top")
 }
 
 #' Table 4 equivalent: every intervention with a computable ICER,
