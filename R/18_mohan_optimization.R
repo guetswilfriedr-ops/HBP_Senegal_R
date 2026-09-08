@@ -185,6 +185,24 @@ build_hr_needs_by_cadre <- function(raw_data_path) {
 #' @param budget_usd Consumables/drug budget ceiling in USD. Use Inf
 #'   for no budget constraint at all (Mohan's "no.drugbudget.limit"
 #'   scenario).
+#' @param budget_cost_per_case Optional numeric vector (same length/
+#'   order as league_table's usable rows), the per-case cost that
+#'   counts against budget_usd, if it differs from
+#'   unit_cost_final_usd. Mohan et al.'s own data distinguishes these:
+#'   her net-health objective uses a "full cost" per case (drugs plus
+#'   the value of staff time), but her drug-budget constraint only
+#'   counts the "drugcost" subset, since staff time is governed
+#'   separately by the HR-capacity constraint rather than by the same
+#'   dollar budget. Validating this port against her published Uganda
+#'   results (see data/external/uganda_hbp/) surfaced this exact
+#'   distinction - using the same per-case cost for both objective and
+#'   budget silently produced too small a package, because it charged
+#'   staff-time cost against a budget meant only for consumables.
+#'   Leave NULL (the default) when league_table has only one cost
+#'   concept - true for this project's Senegal league table today,
+#'   whose unit_cost_final_usd is already a drugs/commodities figure
+#'   (see R/03_costs.R) - so the same value is correctly used for
+#'   both purposes.
 #' @param max_coverage Feasible-coverage ceiling per intervention
 #'   (Mohan's "maxcoverage") - a single value applied to every
 #'   intervention, or a numeric vector the same length and order as
@@ -222,6 +240,7 @@ find_optimal_package <- function(league_table,
                                   cet_usd_per_daly,
                                   objective = "nethealth",
                                   budget_usd = Inf,
+                                  budget_cost_per_case = NULL,
                                   max_coverage = 1,
                                   hr_needs = NULL,
                                   hr_capacity_minutes = NULL) {
@@ -234,10 +253,12 @@ find_optimal_package <- function(league_table,
   if (length(max_coverage) == 1) max_coverage <- rep(max_coverage, n)
   stopifnot(length(max_coverage) == n)
 
-  dalys     <- df$dalys_final
-  fullcost  <- df$unit_cost_final_usd
-  cases     <- df$cases_full_2023
-  nethealth <- dalys - fullcost / cet_usd_per_daly
+  dalys       <- df$dalys_final
+  fullcost    <- df$unit_cost_final_usd
+  cases       <- df$cases_full_2023
+  nethealth   <- dalys - fullcost / cet_usd_per_daly
+  budget_cost <- if (is.null(budget_cost_per_case)) fullcost else budget_cost_per_case
+  stopifnot(length(budget_cost) == n)
 
   objective_coef <- if (objective == "nethealth") nethealth * cases else dalys * cases
 
@@ -250,7 +271,7 @@ find_optimal_package <- function(league_table,
   # entirely rather than passing it a very large finite number.
   has_budget_constraint <- is.finite(budget_usd)
   if (has_budget_constraint) {
-    cons_budget <- fullcost * cases
+    cons_budget <- budget_cost * cases
     cons_mat <- matrix(cons_budget, nrow = 1)
     cons_dir <- "<="
     cons_rhs <- budget_usd
@@ -294,17 +315,19 @@ find_optimal_package <- function(league_table,
     stop("LP did not solve to optimality (lpSolve status code ", solution$status, ")")
   }
 
-  coverage_share <- solution$solution
-  cases_covered  <- coverage_share * cases
-  dalys_solution <- coverage_share * dalys * cases
-  cost_solution  <- coverage_share * fullcost * cases
+  coverage_share      <- solution$solution
+  cases_covered       <- coverage_share * cases
+  dalys_solution      <- coverage_share * dalys * cases
+  cost_solution       <- coverage_share * fullcost * cases     # full per-case cost, for reporting
+  budget_cost_solution <- coverage_share * budget_cost * cases # what actually counts against budget_usd
 
   package <- df %>%
     mutate(
-      coverage_share         = coverage_share,
-      cases_covered          = cases_covered,
-      dalys_averted_solution = dalys_solution,
-      cost_incurred_usd      = cost_solution
+      coverage_share             = coverage_share,
+      cases_covered              = cases_covered,
+      dalys_averted_solution     = dalys_solution,
+      cost_incurred_usd          = cost_solution,
+      budget_cost_incurred_usd   = budget_cost_solution
     )
 
   in_package <- coverage_share > 1e-6
@@ -322,8 +345,8 @@ find_optimal_package <- function(league_table,
     n_interventions_in_package = sum(in_package),
     total_dalys_averted        = sum(dalys_solution),
     net_dalys_averted          = solution$objval,
-    budget_used_usd            = sum(cost_solution),
-    budget_used_pct            = if (is.finite(budget_usd)) sum(cost_solution) / budget_usd else NA_real_,
+    budget_used_usd            = sum(budget_cost_solution),
+    budget_used_pct            = if (is.finite(budget_usd)) sum(budget_cost_solution) / budget_usd else NA_real_,
     highest_icer_in_package    = highest_icer_in_package,
     hr_used_minutes            = hr_used
   )
