@@ -15,4 +15,6 @@ output/tables/*
 output/figures/*
 !output/figures/.gitkeep
 
+data/external/reference_benchmark/optimization_external_validation.xlsx
+
 .DS_Store

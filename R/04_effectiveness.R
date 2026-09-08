@@ -142,19 +142,19 @@ build_effectiveness_table <- function(interventions, id_ratio, tufts_ratios, tuf
       dalys_final = coalesce(dalys_tufts, dalys_uganda),
       effectiveness_status = case_when(
         !is.na(dalys_tufts)  ~ "Tufts ratio",
-        !is.na(dalys_uganda) ~ "Uganda fallback",
+        !is.na(dalys_uganda) ~ "Secondary literature source",
         TRUE                  ~ "Missing"
       ),
       effectiveness_note = case_when(
         !is.na(dalys_tufts) ~ paste0("Tufts article ", article_id, ", ratio #", ratio_number),
-        !is.na(dalys_uganda) ~ "No usable Tufts ratio; used Uganda HBP Tool fallback",
+        !is.na(dalys_uganda) ~ "No usable Tufts ratio; used a secondary literature source",
         tufts_implausible ~ paste0(
           "Tufts article ", article_id, ", ratio #", ratio_number,
           " found but |DALYs/patient| exceeds the plausibility bound (",
-          plausibility_bound, ") and no Uganda fallback found"
+          plausibility_bound, ") and no secondary literature source found"
         ),
-        is.na(article_id) ~ "No Tufts article/ratio selected in id_Ratio, and no Uganda fallback found (no name match in 'OHT Int name mapping recent-old' / 'Uganda HBP Tool')",
-        TRUE ~ "Tufts article/ratio selected but not found in Tufts_Ratios, and no Uganda fallback found"
+        is.na(article_id) ~ "No Tufts article/ratio selected in id_Ratio, and no secondary literature source found (no name match in 'OHT Int name mapping recent-old' / 'Uganda HBP Tool')",
+        TRUE ~ "Tufts article/ratio selected but not found in Tufts_Ratios, and no secondary literature source found"
       )
     ) %>%
     select(intervention, article_id, ratio_number, confidence,

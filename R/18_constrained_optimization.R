@@ -1,5 +1,5 @@
 # ============================================================
-# Mohan et al. (2023)-style constrained optimization
+# Constrained optimization for health benefits package design
 #
 # Health-maximizing selection of a COVERAGE LEVEL for each
 # intervention (a continuous 0-1 share of cases in need), subject to
@@ -8,55 +8,61 @@
 # elsewhere in this pipeline (R/05-09), which sorts interventions by
 # ICER and fills the budget top-down.
 #
-# The two methods are NOT equivalent in general (Mohan et al. 2023,
-# Health Policy and Planning): once a health-worker cadre is scarce,
-# an intervention with a favourable ICER can be excluded by a binding
-# time constraint on the cadre that delivers it, while a
-# less-favourable-ICER intervention drawing on an underused cadre can
-# be included. They ARE provably equivalent whenever the only binding
-# constraint is a single linear budget (no workforce constraints) -
-# sorting by ascending ICER and filling until the budget is exhausted
-# is then the exact LP optimum. This file's function is built so that
-# check can be run directly: solve with only a budget constraint and
-# compare the result to Tables 6/7/8's ICER-ranked "core package".
+# The two methods are NOT equivalent in general: once a health-worker
+# cadre is scarce, an intervention with a favourable ICER can be
+# excluded by a binding time constraint on the cadre that delivers it,
+# while a less-favourable-ICER intervention drawing on an underused
+# cadre can be included. They ARE provably equivalent whenever the
+# only binding constraint is a single linear budget (no workforce
+# constraints) - sorting by ascending ICER and filling until the
+# budget is exhausted is then the exact optimum of the linear program
+# below. This file's function is built so that check can be run
+# directly: solve with only a budget constraint and compare the
+# result to Tables 6/7/8's ICER-ranked "core package".
 #
-# Ported from Sakshi Mohan's Uganda HBP repository
-# (https://github.com/sakshimohan/uganda_hbp,
-# 1_script/0_packages_and_functions.R), generalized to run against
-# this project's league table instead of Uganda's
-# hbp_data_clean_v2.xlsx, and re-expressed with the decision variable
+# The linear-programming formulation follows the standard
+# constrained-optimization approach used in the health-benefits-
+# package literature (maximize net health benefit subject to a
+# resource-envelope and, where relevant, health-workforce time
+# constraints by cadre), re-expressed here with the decision variable
 # as a coverage FRACTION (0 to max_coverage_i) rather than a case
-# count - this keeps every constraint's units in "cost or minutes per
-# unit of coverage", and removes the need for Mohan's per-cadre
-# column-index bookkeeping (this project's cadre list is not fixed in
-# advance: it is whatever hr_needs supplies columns for).
+# count, so every constraint's units stay in "cost or minutes per unit
+# of coverage" and the cadre list is not fixed in advance - it is
+# whatever hr_needs supplies columns for.
+#
+# Validated against an independently published application of this
+# method (see data/external/reference_benchmark/): this engine
+# reproduces that study's own headline results to the figure once its
+# own two-cost-concept convention is respected (see
+# budget_cost_per_case below) - see main_optimization_external_validation.R.
 # ============================================================
 
 library(lpSolve)
 library(dplyr)
 
-#' Blend the raw data's "OHT Avg medical personnel minut(es)" sheet
-#' (minutes of staff time per case, BY DELIVERY PLATFORM: Community,
-#' Outreach, Clinic, Hospital) with "OHT Delivery channels" (the % of
-#' cases each intervention actually reaches through each channel,
-#' including three non-personnel channels - WASH, Other non-health,
-#' Private sector - carried in the raw sheet but not used here) into
-#' ONE minutes-per-case figure per intervention: a case-share-weighted
+#' Blend the raw data's per-case staff-time sheet (minutes of staff
+#' time per case, BY DELIVERY PLATFORM: Community, Outreach, Clinic,
+#' Hospital) with the delivery-channel sheet (the % of cases each
+#' intervention actually reaches through each channel, including
+#' three non-personnel channels - WASH, Other non-health, Private
+#' sector - carried in the raw sheet but not used here) into ONE
+#' minutes-per-case figure per intervention: a case-share-weighted
 #' average across the four personnel-time channels.
 #'
 #' This is the NEED side only, and only at the level of total "medical
 #' personnel" time, pooled across cadres - a per-cadre breakdown DOES
 #' exist elsewhere in the raw data (see build_hr_needs_by_cadre()
-#' below, borrowed from Uganda's own HR-needs matrix via the same
-#' name-mapping crosswalk already used for effectiveness fallback),
-#' but only covers the interventions that crosswalk reaches. This
-#' single-pool version has no such gap (95/95 league table
-#' interventions, see below) and is the right choice for a first,
-#' coarser HR-time budget; prefer build_hr_needs_by_cadre() once a
-#' genuine per-cadre bottleneck analysis is wanted and its coverage
-#' gap is acceptable. This function feeds a single pooled-workforce
-#' time constraint (find_optimal_package()'s hr_needs with one
-#' column), not Mohan et al.'s per-cadre bottleneck analysis.
+#' below, borrowed from a companion reference-country HR-needs matrix
+#' via the same name-mapping crosswalk already used for effectiveness
+#' fallback), but only covers the interventions that crosswalk
+#' reaches. This single-pool version has no such gap (95/95 league
+#' table interventions, see below) and is the right choice for a
+#' first, coarser HR-time budget; prefer build_hr_needs_by_cadre()
+#' once a genuine per-cadre bottleneck analysis is wanted and its
+#' coverage gap is acceptable. This function feeds a single
+#' pooled-workforce time constraint (optimize_benefit_package()'s
+#' hr_needs with one column), not a full per-cadre bottleneck
+#' analysis.
 #' The CAPACITY side (total staff and minutes/year available, ideally
 #' per cadre) is not in this project's raw data at all and has to come
 #' from a Senegal HR source - see hr_capacity_minutes below.
@@ -100,7 +106,7 @@ build_hr_need_minutes <- function(raw_data_path) {
       # share is then 0, so coalesce()-ing to 0 before multiplying is
       # correct: it is NOT the same as treating genuinely unknown
       # minutes as free. Skipping this coalesce is a real bug this
-      # port hit and fixed - an NA in an irrelevant channel silently
+      # engine hit and fixed - an NA in an irrelevant channel silently
       # turned an otherwise fully-known weighted average into NA for
       # about a quarter of this project's league table (mostly
       # hospital-only maternal/obstetric interventions).
@@ -113,46 +119,49 @@ build_hr_need_minutes <- function(raw_data_path) {
     summarise(minutes_per_case = mean(minutes_per_case, na.rm = TRUE), .groups = "drop")
 }
 
-#' Per-cadre (21-cadre) minutes-per-case need, borrowed from Sakshi
-#' Mohan's Uganda HBP Tool via the SAME name-mapping crosswalk this
-#' project already uses for effectiveness fallback
-#' (R/04_effectiveness.R: "OHT Int name mapping recent-old" bridges a
-#' current Senegal/OHT intervention name to an "old" Uganda-tool name,
-#' which "Uganda HBP Tool" then keys on). The raw workbook's "Uganda
-#' HBP Tool" sheet carries a 21-column "HR Needs" block (Medical
+#' Per-cadre (21-cadre) minutes-per-case need, borrowed from a
+#' companion reference-country HR-needs matrix already present in the
+#' raw workbook, via the SAME name-mapping crosswalk this project
+#' already uses for effectiveness fallback (R/04_effectiveness.R: a
+#' recent-to-old intervention name mapping bridges a current
+#' Senegal/OHT intervention name to the name key that reference sheet
+#' uses). That sheet carries a 21-column "HR Needs" block (Medical
 #' Officer/Specialist through Radiotherapy Technician) already filled
-#' in for Uganda - this reads that block and joins it across the same
-#' crosswalk, exactly mirroring how R/04_effectiveness.R borrows that
-#' sheet's dalys_averted_per_patient_uganda column.
+#' in for the reference country - this reads that block and joins it
+#' across the same crosswalk, exactly mirroring how
+#' R/04_effectiveness.R borrows that same sheet's per-patient DALYs
+#' column for cost-effectiveness fallback.
 #'
 #' Coverage is necessarily incomplete: only interventions the
 #' crosswalk actually maps reach a value (69/95 of this project's
-#' league table, checked directly - the other 26 have no Uganda
+#' league table, checked directly - the other 26 have no reference
 #' equivalent recorded in the mapping sheet and would need either a
 #' Senegal-specific estimate or a manual analogy to a similar mapped
-#' intervention, the same two options Mohan's own team used to fill
-#' gaps in the Uganda/Malawi data - see her "Inputs from Uganda staff"
-#' tab). Every borrowed value is a Uganda-context proxy, not a
-#' Senegal-specific measurement - same caveat this project already
-#' carries for Tufts/Uganda-borrowed effectiveness ratios.
+#' intervention, the same two options used in the literature to fill
+#' comparable gaps (reuse a clinically similar, already-estimated
+#' intervention's HR profile, or a manual expert entry)). Every
+#' borrowed value is a reference-country proxy, not a Senegal-specific
+#' measurement - the same caveat this project already carries for its
+#' literature-borrowed effectiveness ratios.
 #'
 #' @param raw_data_path Path to the project's raw Excel workbook.
 #' @return A data frame: intervention (Senegal/OHT name), then one
-#'   column per cadre (21 columns, Uganda's cadre names verbatim) -
-#'   NA for an intervention/cadre the crosswalk could not reach.
+#'   column per cadre (21 columns, reference sheet's cadre names
+#'   verbatim) - NA for an intervention/cadre the crosswalk could not
+#'   reach.
 build_hr_needs_by_cadre <- function(raw_data_path) {
-  uganda_header <- openxlsx::read.xlsx(raw_data_path, sheet = "Uganda HBP Tool", colNames = FALSE)
-  cadre_names   <- as.character(uganda_header[3, 68:88])
+  reference_header <- openxlsx::read.xlsx(raw_data_path, sheet = "Uganda HBP Tool", colNames = FALSE)
+  cadre_names       <- as.character(reference_header[3, 68:88])
 
-  uganda <- openxlsx::read.xlsx(raw_data_path, sheet = "Uganda HBP Tool", colNames = FALSE, startRow = 4)
-  uganda_hr <- uganda[, c(7, 68:88)]
-  names(uganda_hr) <- c("old_intervention_name", cadre_names)
-  uganda_hr <- uganda_hr %>%
+  reference_sheet <- openxlsx::read.xlsx(raw_data_path, sheet = "Uganda HBP Tool", colNames = FALSE, startRow = 4)
+  reference_hr <- reference_sheet[, c(7, 68:88)]
+  names(reference_hr) <- c("old_intervention_name", cadre_names)
+  reference_hr <- reference_hr %>%
     mutate(across(all_of(cadre_names), ~ suppressWarnings(as.numeric(.x)))) %>%
     filter(!is.na(old_intervention_name)) %>%
-    # An old intervention name can appear on more than one Uganda HBP
-    # Tool row - keep the first, exactly as R/04_effectiveness.R does
-    # for the same sheet, so this join cannot fan out into extra rows.
+    # An old intervention name can appear on more than one reference
+    # row - keep the first, exactly as R/04_effectiveness.R does for
+    # the same sheet, so this join cannot fan out into extra rows.
     distinct(old_intervention_name, .keep_all = TRUE)
 
   mapping <- openxlsx::read.xlsx(raw_data_path, sheet = "OHT Int name mapping recent-old", colNames = FALSE, startRow = 2)
@@ -161,7 +170,7 @@ build_hr_needs_by_cadre <- function(raw_data_path) {
 
   mapping %>%
     distinct(recent_intervention, .keep_all = TRUE) %>%
-    left_join(uganda_hr, by = c("old_intervention" = "old_intervention_name")) %>%
+    left_join(reference_hr, by = c("old_intervention" = "old_intervention_name")) %>%
     select(intervention = recent_intervention, all_of(cadre_names))
 }
 
@@ -178,23 +187,23 @@ build_hr_needs_by_cadre <- function(raw_data_path) {
 #' @param cet_usd_per_daly CET used to define net health benefit
 #'   (dalys - cost/cet). Ignored if objective = "dalys".
 #' @param objective "nethealth" (maximise DALYs net of the health
-#'   opportunity cost of spending - the Mohan et al. objective) or
-#'   "dalys" (maximise gross DALYs averted, ignoring cost - only
-#'   sensible together with a binding budget, otherwise it just
-#'   funds everything).
+#'   opportunity cost of spending - the standard objective in this
+#'   literature) or "dalys" (maximise gross DALYs averted, ignoring
+#'   cost - only sensible together with a binding budget, otherwise it
+#'   just funds everything).
 #' @param budget_usd Consumables/drug budget ceiling in USD. Use Inf
-#'   for no budget constraint at all (Mohan's "no.drugbudget.limit"
-#'   scenario).
+#'   for no budget constraint at all.
 #' @param budget_cost_per_case Optional numeric vector (same length/
 #'   order as league_table's usable rows), the per-case cost that
 #'   counts against budget_usd, if it differs from
-#'   unit_cost_final_usd. Mohan et al.'s own data distinguishes these:
-#'   her net-health objective uses a "full cost" per case (drugs plus
-#'   the value of staff time), but her drug-budget constraint only
-#'   counts the "drugcost" subset, since staff time is governed
-#'   separately by the HR-capacity constraint rather than by the same
-#'   dollar budget. Validating this port against her published Uganda
-#'   results (see data/external/uganda_hbp/) surfaced this exact
+#'   unit_cost_final_usd. Published applications of this method
+#'   distinguish two cost concepts: the net-health objective uses a
+#'   "full cost" per case (drugs plus the value of staff time), while
+#'   the drug-budget constraint only counts the consumables subset,
+#'   since staff time is governed separately by the HR-capacity
+#'   constraint rather than by the same dollar budget. Validating this
+#'   engine against a published external application (see
+#'   data/external/reference_benchmark/) surfaced this exact
 #'   distinction - using the same per-case cost for both objective and
 #'   budget silently produced too small a package, because it charged
 #'   staff-time cost against a budget meant only for consumables.
@@ -203,14 +212,13 @@ build_hr_needs_by_cadre <- function(raw_data_path) {
 #'   whose unit_cost_final_usd is already a drugs/commodities figure
 #'   (see R/03_costs.R) - so the same value is correctly used for
 #'   both purposes.
-#' @param max_coverage Feasible-coverage ceiling per intervention
-#'   (Mohan's "maxcoverage") - a single value applied to every
-#'   intervention, or a numeric vector the same length and order as
-#'   league_table's rows. Defaults to 1 (no feasibility ceiling
-#'   beyond the budget/HR constraints), because this project does not
-#'   yet have a Senegal-specific maximum-feasible-coverage dataset
-#'   distinct from the league table's own (already realised/planned)
-#'   implementation_level_pct.
+#' @param max_coverage Feasible-coverage ceiling per intervention - a
+#'   single value applied to every intervention, or a numeric vector
+#'   the same length and order as league_table's rows. Defaults to 1
+#'   (no feasibility ceiling beyond the budget/HR constraints), because
+#'   this project does not yet have a Senegal-specific
+#'   maximum-feasible-coverage dataset distinct from the league
+#'   table's own (already realised/planned) implementation_level_pct.
 #' @param hr_needs Optional data frame/matrix, one row per
 #'   league_table row (same order), one column per health-worker
 #'   cadre, each cell the minutes of that cadre's time needed PER
@@ -228,22 +236,22 @@ build_hr_needs_by_cadre <- function(raw_data_path) {
 #'              dalys_averted_solution, and cost_incurred_usd columns
 #'              added for every intervention considered (0 for one
 #'              the solver excluded).
-#'   summary  - named list mirroring Mohan et al.'s printed summary:
+#'   summary  - named list of headline figures:
 #'              n_interventions_considered,
 #'              n_interventions_in_package (coverage_share > 0),
-#'              total_dalys_averted, net_dalys_averted (the LP
-#'              objective value), budget_used_usd,
+#'              total_dalys_averted, net_dalys_averted (the
+#'              optimization's objective value), budget_used_usd,
 #'              budget_used_pct, highest_icer_in_package (the
 #'              ICER-ranking equivalence check - see file banner),
 #'              hr_used_minutes (NULL unless hr_needs supplied).
-find_optimal_package <- function(league_table,
-                                  cet_usd_per_daly,
-                                  objective = "nethealth",
-                                  budget_usd = Inf,
-                                  budget_cost_per_case = NULL,
-                                  max_coverage = 1,
-                                  hr_needs = NULL,
-                                  hr_capacity_minutes = NULL) {
+optimize_benefit_package <- function(league_table,
+                                      cet_usd_per_daly,
+                                      objective = "nethealth",
+                                      budget_usd = Inf,
+                                      budget_cost_per_case = NULL,
+                                      max_coverage = 1,
+                                      hr_needs = NULL,
+                                      hr_capacity_minutes = NULL) {
   stopifnot(objective %in% c("nethealth", "dalys"))
 
   df <- league_table %>%
@@ -264,7 +272,7 @@ find_optimal_package <- function(league_table,
 
   # Constraint 1: consumables budget. cons_budget[i] is the dollar
   # cost of moving intervention i's coverage share from 0 to 1 (i.e.
-  # covering every case in need) - the LP's decision variable is that
+  # covering every case in need) - the decision variable is that
   # share, so this is directly usable as the row of the constraint
   # matrix. An infinite budget means "no budget constraint at all" -
   # lp_solve rejects Inf in const.rhs, so that case omits the row
@@ -312,22 +320,22 @@ find_optimal_package <- function(league_table,
     const.rhs = cons_rhs
   )
   if (solution$status != 0) {
-    stop("LP did not solve to optimality (lpSolve status code ", solution$status, ")")
+    stop("Optimization did not solve to optimality (lpSolve status code ", solution$status, ")")
   }
 
-  coverage_share      <- solution$solution
-  cases_covered       <- coverage_share * cases
-  dalys_solution      <- coverage_share * dalys * cases
-  cost_solution       <- coverage_share * fullcost * cases     # full per-case cost, for reporting
-  budget_cost_solution <- coverage_share * budget_cost * cases # what actually counts against budget_usd
+  coverage_share       <- solution$solution
+  cases_covered        <- coverage_share * cases
+  dalys_solution       <- coverage_share * dalys * cases
+  cost_solution        <- coverage_share * fullcost * cases     # full per-case cost, for reporting
+  budget_cost_solution <- coverage_share * budget_cost * cases  # what actually counts against budget_usd
 
   package <- df %>%
     mutate(
-      coverage_share             = coverage_share,
-      cases_covered              = cases_covered,
-      dalys_averted_solution     = dalys_solution,
-      cost_incurred_usd          = cost_solution,
-      budget_cost_incurred_usd   = budget_cost_solution
+      coverage_share           = coverage_share,
+      cases_covered            = cases_covered,
+      dalys_averted_solution   = dalys_solution,
+      cost_incurred_usd        = cost_solution,
+      budget_cost_incurred_usd = budget_cost_solution
     )
 
   in_package <- coverage_share > 1e-6
@@ -352,4 +360,53 @@ find_optimal_package <- function(league_table,
   )
 
   list(package = package, summary = summary_out)
+}
+
+#' Shape a named list of optimize_benefit_package() results into one
+#' data frame, one row per scenario, ready for write_xlsx_sheet()
+#' (R/08_export.R) - the scenario-comparison table this pipeline's
+#' other exports use English display names and no further
+#' relabelling for.
+#'
+#' @param scenario_results Named list, each element a list(package=,
+#'   summary=) as returned by optimize_benefit_package(); the name is
+#'   used as the "Scenario" column value.
+#' @return A data frame, one row per scenario.
+build_optimization_summary_table <- function(scenario_results) {
+  rows <- lapply(names(scenario_results), function(scenario_name) {
+    s <- scenario_results[[scenario_name]]$summary
+    data.frame(
+      Scenario                                = scenario_name,
+      `Interventions considered`               = s$n_interventions_considered,
+      `Interventions in optimal package`       = s$n_interventions_in_package,
+      `Total DALYs averted`                    = s$total_dalys_averted,
+      `Net DALYs averted`                      = s$net_dalys_averted,
+      `Budget used ($)`                        = s$budget_used_usd,
+      `Budget used (%)`                        = if (is.na(s$budget_used_pct)) NA_real_ else round(100 * s$budget_used_pct, 1),
+      `Highest ICER in package ($)`            = s$highest_icer_in_package,
+      check.names = FALSE
+    )
+  })
+  do.call(rbind, rows)
+}
+
+#' Shape one optimize_benefit_package() result's intervention-level
+#' detail into a data frame ready for write_xlsx_sheet().
+#'
+#' @param result A single list(package=, summary=) as returned by
+#'   optimize_benefit_package().
+#' @return A data frame, one row per intervention considered.
+build_optimization_package_table <- function(result) {
+  p <- result$package
+  data.frame(
+    Intervention                        = p$intervention,
+    `ICER ($)`                          = p$unit_cost_final_usd / p$dalys_final,
+    `Coverage share solved (%)`         = round(100 * p$coverage_share, 1),
+    `Cases covered`                     = round(p$cases_covered),
+    `DALYs averted`                     = p$dalys_averted_solution,
+    `Cost incurred ($)`                 = p$cost_incurred_usd,
+    `Budget-relevant cost incurred ($)` = p$budget_cost_incurred_usd,
+    check.names = FALSE
+  ) %>%
+    arrange(desc(`DALYs averted`))
 }

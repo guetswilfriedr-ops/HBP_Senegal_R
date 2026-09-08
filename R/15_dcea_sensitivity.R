@@ -110,7 +110,7 @@ scenario_unequal_opportunity_cost <- function(f_row, shift_points = 10) {
 #' @param shift_points config$dcea$sensitivity_shift_points
 #' @param package_interventions Character vector of intervention names
 #'   defining "the package" for the package-level metrics (e.g. from
-#'   build_affordability_table() in R/09_ochalek_analysis.R)
+#'   build_affordability_table() in R/09_priority_setting_analysis.R)
 #' @return A data frame, one row per scenario
 build_dcea_sensitivity_table <- function(league_table, interventions_mapped,
                                           d_table, e_table, f_row, cet_params,

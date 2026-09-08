@@ -12,7 +12,7 @@ source("R/04_effectiveness.R")
 source("R/05_league_table.R")
 source("R/06_charts.R")
 source("R/08_export.R")
-source("R/09_ochalek_analysis.R")
+source("R/09_priority_setting_analysis.R")
 
 raw_data     <- load_raw_data(config$raw_data_path, config$sheets_to_load, config$sheet_header_row)
 cleaned_data <- clean_all(raw_data)
@@ -101,9 +101,10 @@ write_xlsx_sheet(wb_funnel, "Funnel summary", prettify_names(funnel$funnel_summa
 save_xlsx(wb_funnel, "funnel_tracking", config$output_tables_dir)
 
 # ------------------------------------------------------------
-# Efficiency, affordability, and CET-sensitivity analysis,
-# structured after Ochalek et al. (2016)'s Figures 5-7 and Tables
-# 4/7/8. See R/09_ochalek_analysis.R
+# Efficiency, affordability, and CET-sensitivity analysis, following
+# the standard cost-effectiveness-threshold league-table method used
+# in the health-benefits-package literature. See
+# R/09_priority_setting_analysis.R
 # ------------------------------------------------------------
 efficiency_frontier_plot <- build_efficiency_frontier_plot(funnel$league_table, config$cet_usd_per_daly)
 fig6_plot                <- build_fig6_plot(funnel$league_table, config$cet_usd_per_daly)

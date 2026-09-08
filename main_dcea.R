@@ -2,19 +2,19 @@
 # DCEA entry point
 #
 # Runs the Distributional Cost-Effectiveness Analysis (DCEA) for the
-# Senegal HBP league table, following Arnold, Nkhoma & Griffin (2020)
-# ("Distributional impact of the Malawian Essential Health Package",
-# Health Policy and Planning 35(6):646-656) applied to Senegal, for
-# BOTH equity-relevant stratifiers used in that paper: wealth quintile
-# and residence (urban/rural).
+# Senegal HBP league table, following the standard equity-stratified
+# DCEA method used in the health-benefits-package literature, for
+# BOTH equity-relevant stratifiers used in that method: wealth
+# quintile and residence (urban/rural).
 #
 # Prerequisite: data/dcea_prep/DCEA_preparatory_data.xlsx must exist
 # and have its D (tab 2) / E (tab 3) / F (tab 4) tables filled in, for
 # both quintile AND residence columns - every row is filled as of this
 # version, using a tiered fallback (Senegal EDS-Continue actual >
-# Malawi published values, transported via relative risk where the
-# two countries' population compositions differ > plausible WHO/
-# regional assumption), colour-coded and documented cell by cell in
+# a comparable published reference-country value, transported via
+# relative risk where the two countries' population compositions
+# differ > plausible WHO/regional assumption), colour-coded and
+# documented cell by cell in
 # that workbook's "Data tier" column. Replace tier-2/3 values with
 # Senegal-sourced ones as they become available (see that workbook's
 # tab 6 for how to access the underlying microdata) - nothing else in
@@ -32,7 +32,7 @@ source("R/03_costs.R")
 source("R/04_effectiveness.R")
 source("R/05_league_table.R")
 source("R/08_export.R")
-source("R/09_ochalek_analysis.R")
+source("R/09_priority_setting_analysis.R")
 source("R/10_dcea_import.R")
 source("R/11_dcea_mapping.R")
 source("R/12_dcea_distribution.R")
@@ -118,7 +118,7 @@ baseline_hale <- build_baseline_hale(
 # Stage 3: inequality metrics, per intervention and for "the package"
 # (defined here as every intervention affordable at the reference CET
 # - ICER at or below the threshold, the same criterion Table 4/6/7 in
-# R/09_ochalek_analysis.R use for the affordable core package), for
+# R/09_priority_setting_analysis.R use for the affordable core package), for
 # both stratifiers
 # ------------------------------------------------------------
 package_interventions <- league_table %>%

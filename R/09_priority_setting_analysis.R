@@ -2,11 +2,12 @@
 # Efficiency, affordability, and cost-effectiveness-threshold
 # (CET) sensitivity analysis
 #
-# Four views of the league table, each answering a different
-# planning question, structured after Ochalek, Claxton, Revill,
-# Sculpher & Rollinger (2016) CHE Research Paper 136:
+# Five views of the league table, each answering a different
+# planning question, following the standard cost-effectiveness-
+# threshold (CET) league-table method used in the health-benefits-
+# package literature:
 #
-#   - Efficiency frontier (their Figure 5): ordering every costed,
+#   - Efficiency frontier (Table 4): ordering every costed,
 #     effective intervention by its ICER and stacking their cost
 #     gives a declining curve of DALYs averted per $1,000 spent -
 #     the rate at which additional spending buys additional
@@ -15,26 +16,26 @@
 #     where that rate stops clearing the bar the health system is
 #     willing to pay.
 #   - Interventions ranked by net health benefit, full
-#     implementation (their Figure 6): net DALYs averted per
+#     implementation (Table 5): net DALYs averted per
 #     intervention (which can be negative for one too costly to
 #     be worth including) alongside the cumulative spend as more
 #     interventions are added.
-#   - Full vs realistic implementation (their Figure 7): the same
+#   - Full vs realistic implementation (Table 6): the same
 #     ranking, comparing net DALYs averted and cumulative spend at
 #     100% implementation (solid lines) against the coverage
 #     actually expected (dotted lines) - the gap between the two
 #     is health left on the table by partial coverage.
-#   - Budget reallocation (their Table 7): the underspend created
+#   - Budget reallocation (Table 7): the underspend created
 #     by partial implementation of the affordable core package can
 #     fund additional interventions beyond it; this adds them, in
 #     ascending ICER order, until the underspend runs out.
-#   - CET sensitivity (their Table 8): affordability is a function
+#   - CET sensitivity (Table 8): affordability is a function
 #     of the threshold itself, so this recomputes the affordable
 #     package, its budget, and the reallocation above at several
 #     CET scenarios. Senegal has no published set of alternative
-#     CET estimates comparable to Ochalek et al.'s $38/$61/$120
-#     range for Malawi, so scenarios here are expressed as a
-#     proportion of the reference threshold (config$cet_usd_per_daly).
+#     CET estimates from comparable applications of this method
+#     elsewhere, so scenarios here are expressed as a proportion of
+#     the reference threshold (config$cet_usd_per_daly).
 # ============================================================
 
 library(dplyr)

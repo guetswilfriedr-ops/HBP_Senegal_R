@@ -168,7 +168,7 @@ build_dcea_distribution <- function(league_table, interventions_mapped, d_table,
 #' @param group_type "wealth" or "residence"
 #' @param interventions Optionally restrict to a subset of intervention
 #'   names (e.g. only those affordable at the reference CET, from
-#'   build_affordability_table() in R/09_ochalek_analysis.R). NULL (the
+#'   build_affordability_table() in R/09_priority_setting_analysis.R). NULL (the
 #'   default) uses every intervention in `distribution`.
 #' @return One row per group, with total direct_benefit,
 #'   opportunity_cost and net_benefit for both the full and realistic

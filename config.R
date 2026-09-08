@@ -80,7 +80,7 @@ config <- list(
   cet_usd_per_daly = 485,
 
   # Alternative CET scenarios for the sensitivity analysis
-  # (R/09_ochalek_analysis.R), mirroring the way Ochalek et al. (2016)
+  # (R/09_priority_setting_analysis.R), mirroring the way Ochalek et al. (2016)
   # show how the affordable package changes under different threshold
   # estimates. Senegal has no published set of alternative CET
   # estimates, so scenarios are expressed as a proportion of the
