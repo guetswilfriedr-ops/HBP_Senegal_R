@@ -83,16 +83,27 @@ table2 <- build_scenario_comparison_table(scenario_results)
 table3 <- build_program_inclusion_table(scenario_results)
 
 # ------------------------------------------------------------
-# Figure 1 equivalent: consumables-budget use by disease program,
-# provisional-budget scenario. Single-resource version of the
-# multi-resource chart in the literature (no HR data yet).
+# Figure 1 equivalent: health-system resource use by program. The
+# standard version of this chart (see the reference reporting
+# structure) puts one bar PER RESOURCE on the x-axis (each
+# health-worker cadre, plus the consumables budget), stacked and
+# colour-coded by the disease program consuming that resource, each
+# bar topped with the total % of that resource required. Senegal has
+# only one resource modelled so far (the consumables budget - no
+# workforce-cadre data yet, Stage 2), so this is a single-bar version
+# of that same chart: one 100%-stacked column, segmented by program.
 # ------------------------------------------------------------
 budget_pkg <- scenario_budget$package %>%
   dplyr::filter(coverage_share > 1e-6) %>%
   dplyr::group_by(main_category) %>%
   dplyr::summarise(spend_usd = sum(budget_cost_incurred_usd), .groups = "drop") %>%
-  dplyr::mutate(pct_of_budget = 100 * spend_usd / config$consumables_budget_usd) %>%
-  dplyr::arrange(desc(pct_of_budget))
+  dplyr::mutate(
+    pct_of_budget = 100 * spend_usd / config$consumables_budget_usd,
+    resource = "Consumables\nbudget"
+  ) %>%
+  dplyr::arrange(main_category)
+
+budget_pkg_total_pct <- sum(budget_pkg$pct_of_budget)
 
 # LISER palette (see the liser-style skill): step through the Bleu,
 # Cyan, and Rouge ramps rather than an arbitrary categorical palette,
@@ -128,27 +139,41 @@ liser_chart_theme <- function(base_size = 12) {
     )
 }
 
-fig1_budget_use <- ggplot(budget_pkg, aes(x = reorder(main_category, pct_of_budget), y = pct_of_budget, fill = pct_of_budget)) +
-  geom_col(width = 0.62) +
+fig1_budget_use <- ggplot(budget_pkg, aes(x = resource, y = pct_of_budget, fill = main_category)) +
+  geom_col(width = 0.45, color = "white", linewidth = 0.4) +
   geom_text(
-    aes(label = paste0(format(round(pct_of_budget, 1), nsmall = 1), "%")),
-    hjust = -0.18, size = 3.5, color = "#000066", fontface = "bold"
+    aes(label = ifelse(pct_of_budget >= 4, paste0(round(pct_of_budget, 1), "%"), "")),
+    position = position_stack(vjust = 0.5), size = 3, color = "white", fontface = "bold"
   ) +
-  coord_flip(clip = "off") +
-  scale_fill_gradient(low = "#7FB3E8", high = "#000066") +
-  scale_y_continuous(limits = c(0, max(budget_pkg$pct_of_budget) * 1.18), expand = expansion(mult = c(0, 0.02))) +
+  annotate(
+    "text", x = 1, y = budget_pkg_total_pct + 3,
+    label = paste0(round(budget_pkg_total_pct, 1), "%"), color = "#000066", fontface = "bold", size = 4
+  ) +
+  scale_fill_manual(values = liser_categorical_palette, name = NULL) +
+  scale_y_continuous(limits = c(0, 108), breaks = seq(0, 100, 25), labels = paste0(seq(0, 100, 25), "%"), expand = c(0, 0)) +
+  coord_cartesian(clip = "off") +
+  guides(fill = guide_legend(ncol = 2, byrow = TRUE)) +
   labs(
-    title = "Consumables-budget use by disease program",
-    subtitle = paste0(
-      "Share of the provisional $", format(config$consumables_budget_usd / 1e6, big.mark = ","),
-      "M consumables budget absorbed by each program in the optimal package"
-    ),
-    x = NULL, y = "Share of the consumables budget (%)",
-    caption = "Provisional budget scenario — placeholder value, to be revised once a confirmed MSAS figure is available."
+    title = "Health-system resource use by program",
+    subtitle = stringr::str_wrap(paste0(
+      "Provisional budget scenario ($", format(config$consumables_budget_usd / 1e6, big.mark = ","),
+      "M placeholder) - percentage of resource required, by disease program"
+    ), width = 55),
+    x = "Resource", y = "Percentage of resource required",
+    caption = stringr::str_wrap(
+      "Only the consumables budget is modelled so far; health-worker-cadre resources await Senegal-specific workforce-capacity data (Stage 2).",
+      width = 60
+    )
   ) +
-  liser_chart_theme()
+  liser_chart_theme() +
+  theme(
+    legend.position = "bottom", legend.text = element_text(size = 8.5),
+    axis.text.x = element_text(face = "bold", color = "#000066"),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(color = "grey90", linewidth = 0.35)
+  )
 
-export_figure(fig1_budget_use, "optimization_fig1_budget_use_by_program", config$output_figures_dir, width = 9.5, height = 6)
+export_figure(fig1_budget_use, "optimization_fig1_budget_use_by_program", config$output_figures_dir, width = 8, height = 8.5)
 
 # ------------------------------------------------------------
 # Figure 2 equivalent: marginal net DALYs averted from an additional
