@@ -221,7 +221,12 @@ program_data <- dplyr::bind_rows(
 ) %>%
   dplyr::mutate(
     resource = factor(resource, levels = resource_levels),
-    scenario = factor(scenario, levels = scenario_levels)
+    scenario = factor(scenario, levels = scenario_levels),
+    # Explicit, identical factor levels across both panels - otherwise
+    # each panel's own fill scale only picks up the programmes present
+    # in ITS data, and patchwork's collected legend ends up with two
+    # near-duplicate colour keys instead of one shared one.
+    main_category = factor(main_category, levels = sort(unique(main_category)))
   )
 
 resource_totals <- program_data %>%
@@ -231,36 +236,45 @@ resource_totals <- program_data %>%
   dplyr::mutate(label_y = total_pct + max(total_pct) * 0.04) %>%
   dplyr::ungroup()
 
-fig1_budget_use <- ggplot() +
-  geom_col(
-    data = program_data, aes(x = resource, y = pct, fill = main_category),
-    width = 0.6, color = "white", linewidth = 0.3
-  ) +
-  geom_text(
-    data = program_data,
-    aes(x = resource, y = pct, label = ifelse(pct >= 4, paste0(round(pct, 1), "%"), "")),
-    position = position_stack(vjust = 0.5), size = 2.6, color = "white", fontface = "bold"
-  ) +
-  geom_text(
-    data = resource_totals,
-    aes(x = resource, y = label_y, label = paste0(round(total_pct, 1), "%")),
-    color = liser_bleu, fontface = "bold", size = 3.2
-  ) +
-  scale_x_discrete(limits = resource_levels, drop = FALSE) +
-  scale_fill_manual(values = liser_categorical_palette, name = NULL, na.translate = FALSE) +
-  scale_y_continuous(
-    breaks = seq(0, 150, 25), labels = paste0(seq(0, 150, 25), "%"),
-    expand = expansion(mult = c(0, 0.1))
-  ) +
-  facet_wrap(~scenario, ncol = 1) +
-  guides(fill = guide_legend(ncol = 3, byrow = TRUE)) +
-  labs(x = "Resource", y = "Percentage of resource required") +
-  liser_chart_theme() +
-  theme(
-    legend.position = "bottom", legend.text = element_text(size = 8.5),
-    axis.text.x = element_text(face = "bold", color = liser_bleu, size = rel(0.72)),
-    strip.text = element_text(face = "bold", color = liser_bleu, size = rel(1))
-  )
+# Built as two separate panels (not facet_wrap) and stacked with
+# patchwork: facet_wrap only draws the shared x-axis category labels
+# once, under the bottom panel, which left the top panel's resource
+# names unlabelled. Two independent plots each keep their own full
+# x-axis. The stacked-bar segments are colour-coded by programme but
+# are not individually labelled (too many small segments to label
+# without clutter/overlap) - only the bold total above each bar is
+# labelled, since that is the number the text discusses.
+suppressMessages(library(patchwork))
+
+build_fig1_panel <- function(scenario_label) {
+  pd <- program_data %>% dplyr::filter(scenario == scenario_label)
+  rt <- resource_totals %>% dplyr::filter(scenario == scenario_label)
+  ggplot() +
+    geom_col(
+      data = pd, aes(x = resource, y = pct, fill = main_category),
+      width = 0.6, color = "white", linewidth = 0.3
+    ) +
+    geom_text(
+      data = rt, aes(x = resource, y = label_y, label = paste0(round(total_pct, 1), "%")),
+      color = liser_bleu, fontface = "bold", size = 3.2
+    ) +
+    scale_x_discrete(limits = resource_levels, drop = FALSE) +
+    scale_fill_manual(values = liser_categorical_palette, name = NULL, na.translate = FALSE, drop = FALSE) +
+    scale_y_continuous(
+      breaks = seq(0, 150, 25), labels = paste0(seq(0, 150, 25), "%"),
+      expand = expansion(mult = c(0, 0.1))
+    ) +
+    labs(x = NULL, y = "Percentage of resource required", title = scenario_label) +
+    liser_chart_theme() +
+    theme(
+      legend.position = "bottom", legend.text = element_text(size = 8.5),
+      axis.text.x = element_text(face = "bold", color = liser_bleu, size = rel(0.72)),
+      plot.title = element_text(face = "bold", color = liser_bleu, size = rel(1), hjust = 0.5)
+    )
+}
+
+fig1_budget_use <- (build_fig1_panel(scenario_levels[1]) / build_fig1_panel(scenario_levels[2])) +
+  plot_layout(guides = "collect") & theme(legend.position = "bottom")
 
 export_figure(fig1_budget_use, "optimization_fig1_budget_use_by_program", config$output_figures_dir, width = 9, height = 10.5)
 
@@ -268,56 +282,60 @@ export_figure(fig1_budget_use, "optimization_fig1_budget_use_by_program", config
 # Figure 2: marginal value of investing $1000 in different
 # health-system resources, panels (a)/(b) matching Figure 1, same
 # resource axis. Health-worker cadres remain placeholders in both
-# panels: converting $1,000 into cadre time needs a salary figure by
-# cadre, which this exercise does not have. Only the consumables-budget
-# bar is real in each panel.
+# panels: converting $1,000 into cadre time uses each cadre's monthly
+# salary (hr_salary_monthly_usd, R/18) - the reference study's own
+# supplementary Table S9 figures (its own workbook has no salary data
+# at all - checked directly) - the same literature source as the
+# health-worker time-per-case and capacity figures above. Every cadre
+# on the axis is real in both panels now; only the mechanism's
+# validated limits differ by cadre (see build_hr_marginal_value(),
+# R/18, and validate_optimization_against_reference.R).
 # ------------------------------------------------------------
-scenario_base_plus1000 <- optimize_benefit_package(
+hr_workforce_size <- build_illustrative_hr_workforce_size()
+marginal_cadres_fig2 <- c("medstaff", "nursingstaff", "pharmstaff", "mentalstaff")
+
+marginal_value_base <- optimize_benefit_package(
   hr_data$league_table_subset,
   cet_usd_per_daly = config$cet_usd_per_daly,
   budget_usd = config$consumables_budget_usd + 1000,
   hr_needs = hr_data$hr_needs,
   hr_capacity_minutes = hr_capacity_illustrative
-)
-marginal_value_base <- scenario_base_plus1000$summary$net_dalys_averted - scenario_base$summary$net_dalys_averted
+)$summary$net_dalys_averted - scenario_base$summary$net_dalys_averted
 
-scenario_task_shifting_plus1000 <- optimize_benefit_package(
+marginal_value_task_shifting <- optimize_benefit_package(
   hr_data$league_table_subset,
   cet_usd_per_daly = config$cet_usd_per_daly,
   budget_usd = config$consumables_budget_usd + 1000,
   hr_needs = hr_needs_task_shifted,
   hr_capacity_minutes = hr_capacity_illustrative
-)
-marginal_value_task_shifting <- scenario_task_shifting_plus1000$summary$net_dalys_averted - scenario_task_shifting$summary$net_dalys_averted
+)$summary$net_dalys_averted - scenario_task_shifting$summary$net_dalys_averted
 
-marginal_data <- data.frame(
-  resource = factor(rep(resource_levels[5], 2), levels = resource_levels),
-  scenario = factor(scenario_levels, levels = scenario_levels),
-  value = c(marginal_value_base, marginal_value_task_shifting)
+marginal_by_cadre_base <- build_hr_marginal_value(
+  hr_data$league_table_subset, cet_usd_per_daly = config$cet_usd_per_daly, budget_usd = config$consumables_budget_usd,
+  hr_needs = hr_data$hr_needs, hr_capacity_minutes = hr_capacity_illustrative, workforce_size = hr_workforce_size,
+  salary_monthly_usd = hr_salary_monthly_usd, cadres = marginal_cadres_fig2, base_result = scenario_base
+)
+marginal_by_cadre_ts <- build_hr_marginal_value(
+  hr_data$league_table_subset, cet_usd_per_daly = config$cet_usd_per_daly, budget_usd = config$consumables_budget_usd,
+  hr_needs = hr_needs_task_shifted, hr_capacity_minutes = hr_capacity_illustrative, workforce_size = hr_workforce_size,
+  salary_monthly_usd = hr_salary_monthly_usd, cadres = marginal_cadres_fig2, base_result = scenario_task_shifting
 )
 
-# Placeholder only where data genuinely isn't available: converting
-# $1,000 into cadre time needs a salary figure by cadre, not available
-# for either panel.
-placeholder_marginal <- expand.grid(
-  scenario = factor(scenario_levels, levels = scenario_levels),
-  resource = factor(resource_levels[1:4], levels = resource_levels),
-  stringsAsFactors = FALSE
+marginal_data <- rbind(
+  data.frame(resource = resource_levels[5], scenario = scenario_levels[1], value = marginal_value_base),
+  data.frame(resource = resource_levels[5], scenario = scenario_levels[2], value = marginal_value_task_shifting),
+  data.frame(resource = names(resource_to_cadre), scenario = scenario_levels[1], value = marginal_by_cadre_base[resource_to_cadre[names(resource_to_cadre)]]),
+  data.frame(resource = names(resource_to_cadre), scenario = scenario_levels[2], value = marginal_by_cadre_ts[resource_to_cadre[names(resource_to_cadre)]])
 )
+marginal_data$resource <- factor(marginal_data$resource, levels = resource_levels)
+marginal_data$scenario <- factor(marginal_data$scenario, levels = scenario_levels)
+rownames(marginal_data) <- NULL
 
 fig2_marginal_value <- ggplot() +
-  geom_col(
-    data = placeholder_marginal, aes(x = resource, y = max(marginal_data$value) * 1.15),
-    fill = liser_gris_light, width = 0.6
-  ) +
-  geom_text(
-    data = placeholder_marginal, aes(x = resource, y = max(marginal_data$value) * 0.55, label = "Data not yet\navailable"),
-    size = 2.3, color = "grey40", lineheight = 0.9, fontface = "italic"
-  ) +
   geom_col(data = marginal_data, aes(x = resource, y = value), fill = liser_bleu, width = 0.6) +
   geom_text(
     data = marginal_data,
-    aes(x = resource, y = value, label = paste0("+", format(round(value, 2), nsmall = 2), " DALYs")),
+    aes(x = resource, y = value, label = paste0("+", sprintf("%.2f", value), " DALYs")),
     hjust = -0.1, size = 3, color = liser_bleu, fontface = "bold"
   ) +
   coord_flip(clip = "off") +
