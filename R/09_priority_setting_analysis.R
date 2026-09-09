@@ -156,11 +156,6 @@ build_efficiency_frontier_plot <- function(league_table, cet_usd_per_daly) {
     scale_x_continuous(labels = dollars_millions, expand = expansion(mult = c(0.01, 0.24))) +
     scale_y_log10(labels = scales::label_comma()) +
     labs(
-      title = "DALYs averted per $1,000, all costed interventions ordered by ICER",
-      subtitle = paste0(
-        "Health opportunity cost: $", cet_usd_per_daly, "/DALY (", round(threshold_efficiency, 1), " DALYs per $1,000). ",
-        "Blue = cost-effective at the CET, red = not. Log scale"
-      ),
       x = "Cumulative cost, full implementation",
       y = "DALYs averted per $1,000 spent (log scale)"
     ) +
@@ -202,11 +197,7 @@ build_fig6_plot <- function(league_table, cet_usd_per_daly) {
       labels = number_millions,
       sec.axis = sec_axis(~ . / scale_factor, name = "Cumulative spend, full implementation", labels = dollars_millions)
     ) +
-    labs(
-      title = "Interventions ranked by net health benefit, with cumulative spend",
-      subtitle = "Full implementation (100%). Negative bars: cost exceeds the health opportunity cost of the CET",
-      x = "Intervention rank (by net health benefit)"
-    ) +
+    labs(x = "Intervention rank (by net health benefit)") +
     liser_chart_theme(base_size = 10) +
     theme(axis.title.y.right = element_text(color = liser_cyan_fonce))
 }
@@ -246,12 +237,7 @@ build_fig7_plot <- function(league_table, cet_usd_per_daly) {
       labels = number_millions,
       sec.axis = sec_axis(~ . / scale_factor, name = "Cumulative spend", labels = dollars_millions)
     ) +
-    labs(
-      title = "Full vs realistic implementation: net health benefit and cumulative spend",
-      subtitle = "All league table interventions. Solid = full implementation (100%); dotted = realistic implementation",
-      x = "Intervention rank (by net health benefit)",
-      color = NULL
-    ) +
+    labs(x = "Intervention rank (by net health benefit)", color = NULL) +
     liser_chart_theme(base_size = 10) +
     theme(axis.title.y.right = element_text(color = liser_cyan_fonce), legend.position = "top")
 }

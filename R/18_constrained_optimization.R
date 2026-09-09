@@ -174,6 +174,76 @@ build_hr_needs_by_cadre <- function(raw_data_path) {
     select(intervention = recent_intervention, all_of(cadre_names))
 }
 
+#' Aggregate the 21-cadre HR-need matrix (build_hr_needs_by_cadre())
+#' into the 8 broader cadre groups this project's external HR-capacity
+#' benchmark (data/external/reference_benchmark/) is expressed in, and
+#' restrict to the rows with a complete set of 8 group values - the
+#' subset of the league table this illustrative HR-constrained run can
+#' actually use (mirrors the source study's own practice of running
+#' its optimization on the subset of candidate interventions with
+#' minimum data available, rather than all of them).
+#'
+#' @param league_table funnel$league_table (R/05_league_table.R)
+#' @param raw_data_path config$raw_data_path
+#' @return A list: league_table_subset (rows with complete HR-need
+#'   data, in the same row order as hr_needs) and hr_needs (a data
+#'   frame, 8 columns: medstaff, nursingstaff, pharmstaff, labstaff,
+#'   dentalstaff, mentalstaff, nutristaff, diagstaff)
+build_hr_needs_8bucket <- function(league_table, raw_data_path) {
+  hr_21 <- build_hr_needs_by_cadre(raw_data_path)
+
+  hr_8 <- hr_21 %>%
+    transmute(
+      intervention = intervention,
+      medstaff     = `Medical Officer / Specialist` + `Clinical Officer / Technician`,
+      nursingstaff = `Med. Assistant` + `Nurse Officer` + `Nurse Midwife Technician`,
+      pharmstaff   = Pharmacist + `Pharm Technician` + `Pharm Assistant`,
+      labstaff     = `Lab Officer` + `Lab Technician` + `Lab Assistant`,
+      dentalstaff  = `Dental Officer` + `Dental Therapist` + `Dental Assistant`,
+      mentalstaff  = `Mental Health Staff`,
+      nutristaff   = `Nutrition Staff`,
+      diagstaff    = Radiographer + `Radiography Technician` + Sonographer + `Radiotherapy Technician`
+    )
+
+  # Same usability filter optimize_benefit_package() applies internally
+  # (!is.na(dalys_final/unit_cost_final_usd/cases_full_2023), cases > 0)
+  # - applied here too so hr_needs lines up row-for-row with the n it
+  # will actually solve over, not the full league_table's row count.
+  usable <- league_table %>%
+    filter(!is.na(dalys_final), !is.na(unit_cost_final_usd), !is.na(cases_full_2023), cases_full_2023 > 0)
+
+  joined <- usable %>% left_join(hr_8, by = "intervention")
+  cadre_cols <- c("medstaff", "nursingstaff", "pharmstaff", "labstaff", "dentalstaff", "mentalstaff", "nutristaff", "diagstaff")
+  complete <- stats::complete.cases(joined[, cadre_cols])
+
+  list(
+    league_table_subset = joined[complete, ],
+    hr_needs             = joined[complete, cadre_cols]
+  )
+}
+
+#' Illustrative Stage-2 HR-capacity assumption: total patient-facing
+#' minutes per year, by the same 8 cadre groups, read from this
+#' project's external validation benchmark (data/external/
+#' reference_benchmark/ - see main_optimization_external_validation.R).
+#' This is NOT a Senegal-specific measurement - it stands in for a
+#' Senegal workforce-capacity survey that does not exist yet, purely
+#' to demonstrate the full budget-and-workforce-constrained method
+#' end-to-end. Replace with a Senegal MSAS workforce figure the moment
+#' one exists; nothing else about the optimization needs to change.
+#'
+#' @return A named numeric vector, one entry per cadre group
+build_illustrative_hr_capacity <- function() {
+  path <- "data/external/reference_benchmark/data/benchmark_dataset.xlsx"
+  hr_constraint <- openxlsx::read.xlsx(path, sheet = "hr_constraint", colNames = TRUE)
+  colnames(hr_constraint) <- as.character(unlist(hr_constraint[1, ]))
+  cadre_cols <- c("medstaff", "nursingstaff", "pharmstaff", "labstaff", "dentalstaff", "mentalstaff", "nutristaff", "diagstaff")
+  setNames(
+    suppressWarnings(as.numeric(hr_constraint$`Total patient-facing time per year (minutes)`[2:9])),
+    cadre_cols
+  )
+}
+
 #' Solve for the health-maximizing coverage of each intervention,
 #' subject to a consumables budget and, optionally, health-workforce
 #' time constraints by cadre.
@@ -357,7 +427,8 @@ optimize_benefit_package <- function(league_table,
     budget_used_usd                 = sum(budget_cost_solution),
     budget_used_pct                 = if (is.finite(budget_usd)) sum(budget_cost_solution) / budget_usd else NA_real_,
     highest_icer_in_package         = highest_icer_in_package,
-    hr_used_minutes                 = hr_used
+    hr_used_minutes                 = hr_used,
+    hr_capacity_minutes             = hr_capacity_minutes
   )
 
   list(package = package, summary = summary_out)
@@ -422,6 +493,17 @@ build_optimization_package_table <- function(result) {
 #'   column headers.
 #' @return A data frame: a "Metric" column plus one column per
 #'   scenario name.
+cadre_display_labels <- c(
+  medstaff     = "Doctor/Clinical officer capacity used (%)",
+  nursingstaff = "Nursing staff capacity used (%)",
+  pharmstaff   = "Pharmaceutical staff capacity used (%)",
+  labstaff     = "Laboratory staff capacity used (%)",
+  dentalstaff  = "Dental staff capacity used (%)",
+  mentalstaff  = "Mental health staff capacity used (%)",
+  nutristaff   = "Nutrition staff capacity used (%)",
+  diagstaff    = "Diagnostic imaging staff capacity used (%)"
+)
+
 build_scenario_comparison_table <- function(scenario_results) {
   metric_rows <- list(
     "Number of interventions with positive net health benefit" = function(s) s$n_interventions_positive_nethealth,
@@ -432,10 +514,29 @@ build_scenario_comparison_table <- function(scenario_results) {
     "Percentage of consumables budget required"                = function(s) if (is.na(s$budget_used_pct)) NA else paste0(round(100 * s$budget_used_pct), "%")
   )
 
+  # Cadre-utilization rows, added only for the cadres actually
+  # constrained in at least one scenario (a scenario with no HR
+  # constraint at all shows "-" on these rows rather than the row
+  # being omitted, so the table stays one consistent shape).
+  cadres_seen <- unique(unlist(lapply(scenario_results, function(r) names(r$summary$hr_used_minutes))))
+  for (cadre in cadres_seen) {
+    label <- cadre_display_labels[[cadre]]
+    metric_rows[[label]] <- local({
+      cadre <- cadre
+      function(s) {
+        if (is.null(s$hr_used_minutes) || is.null(s$hr_used_minutes[[cadre]])) return(NA)
+        paste0(round(100 * s$hr_used_minutes[[cadre]] / s$hr_capacity_minutes[[cadre]]), "%")
+      }
+    })
+  }
+
   out <- data.frame(Metric = names(metric_rows), check.names = FALSE)
   for (scenario_name in names(scenario_results)) {
     s <- scenario_results[[scenario_name]]$summary
-    out[[scenario_name]] <- vapply(metric_rows, function(f) as.character(f(s)), character(1))
+    out[[scenario_name]] <- vapply(metric_rows, function(f) {
+      v <- f(s)
+      if (length(v) == 0 || is.na(v)) "-" else as.character(v)
+    }, character(1))
   }
   out
 }

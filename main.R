@@ -52,8 +52,10 @@ funnel <- build_intervention_funnel(
 # Charts
 # ------------------------------------------------------------
 funnel_flow_plot <- build_funnel_flow_plot(funnel$funnel_summary)
+top20_causes_plot <- build_top20_causes_plot(config$raw_data_path)
 
 export_figure(funnel_flow_plot, "funnel_flow", config$output_figures_dir, width = 11, height = 7)
+export_figure(top20_causes_plot, "top20_causes_dalys", config$output_figures_dir, width = 9, height = 7.5)
 
 # ------------------------------------------------------------
 # Step-by-step trace, one workbook with one sheet per step

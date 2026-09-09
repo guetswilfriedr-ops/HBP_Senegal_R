@@ -54,8 +54,6 @@ build_equity_plane_plot <- function(equity_metrics, group_type = c("wealth", "re
     geom_hline(yintercept = 0, color = "#7C797C", linewidth = 0.4) +
     geom_vline(xintercept = 0, color = "#7C797C", linewidth = 0.4) +
     labs(
-      title = paste0("Health equity impact plane (by ", dimension_label, ")"),
-      subtitle = "Each point is one intervention. Right of the vertical line: reduces health inequality.\nAbove the horizontal line: increases total population health.",
       x = "Inequality impact (DALYs averted-equivalent; population-scaled change in EDE health minus net health benefit)",
       y = "Net population health benefit (DALYs averted)"
     ) +
@@ -101,10 +99,7 @@ build_benefit_breakdown_plot <- function(group_summary, group_type = c("wealth",
     scale_fill_manual(values = c(
       "Direct benefit" = "#000066", "Opportunity cost" = "#E30613", "Net benefit" = "#000000"
     ), name = NULL) +
-    labs(
-      title = paste0("Direct benefit, opportunity cost and net benefit\nby ", dimension_label, " (", scenario_title, ")"),
-      x = NULL, y = unit_label
-    ) +
+    labs(x = NULL, y = unit_label) +
     liser_chart_theme(base_size = 10) +
     theme(legend.position = "top")
 }
@@ -149,10 +144,6 @@ build_hale_plot <- function(baseline_hale, distribution, interventions, national
     geom_col(aes(y = baseline + gain), fill = NA, color = "#000066", linewidth = 0.9, width = 0.6) +
     geom_text(aes(y = baseline + gain, label = sprintf("+%.2f", gain)), vjust = -0.4, size = 3.2) +
     coord_cartesian(ylim = c(min(df$baseline) * 0.9, max(df$baseline + df$gain) * 1.05)) +
-    labs(
-      title = paste0("Baseline vs. post-package healthy life expectancy (HALE)\nby ", dimension_label),
-      subtitle = "Shaded bar: baseline HALE (simplified proxy). Outline: baseline + package net benefit.",
-      x = NULL, y = "HALE (years)"
-    ) +
+    labs(x = NULL, y = "HALE (years)") +
     liser_chart_theme(base_size = 10)
 }

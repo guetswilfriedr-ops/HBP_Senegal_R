@@ -5,6 +5,41 @@
 library(ggplot2)
 library(dplyr)
 
+#' Top 20 GBD causes of DALYs in Senegal, ranked, colour-coded by
+#' Level-1 GBD category. Reads "GBD_TIER3" directly from the raw
+#' workbook (not part of config$sheets_to_load - this chart is
+#' descriptive disease-burden context, not an input to the league
+#' table), mirroring how R/18_constrained_optimization.R reads its own
+#' extra sheets directly for the same reason.
+#'
+#' @param raw_data_path Path to the project's raw Excel workbook
+#'   (config$raw_data_path)
+#' @return A ggplot object
+build_top20_causes_plot <- function(raw_data_path) {
+  gbd <- openxlsx::read.xlsx(raw_data_path, sheet = "GBD_TIER3")
+  df <- gbd %>%
+    filter(!is.na(Rank), as.numeric(Rank) <= 20) %>%
+    transmute(
+      category = `Category.(L1)`,
+      cause = factor(Cause, levels = Cause[order(as.numeric(Percentage.of.DALYs.lost.by.disease))]),
+      pct = as.numeric(Percentage.of.DALYs.lost.by.disease)
+    )
+
+  ggplot(df, aes(x = cause, y = pct, fill = category)) +
+    geom_col(width = 0.7) +
+    geom_text(aes(label = paste0(round(pct, 1), "%")), hjust = -0.15, size = 3, color = "grey25") +
+    coord_flip(clip = "off") +
+    scale_fill_manual(values = c(
+      "Communicable, maternal, neonatal, and nutritional diseases" = liser_bleu,
+      "Injuries" = liser_rouge,
+      "Non-communicable diseases" = liser_cyan
+    ), name = NULL) +
+    scale_y_continuous(limits = c(0, max(df$pct) * 1.12), expand = expansion(mult = c(0, 0.05))) +
+    labs(x = NULL, y = "Share of total DALYs (%)") +
+    liser_chart_theme(base_size = 11) +
+    theme(legend.position = "bottom", axis.text.y = element_text(size = rel(0.85)))
+}
+
 #' Flow diagram of the intervention funnel (steps and exclusion counts)
 #'
 #' @param funnel_summary Output of build_intervention_funnel()$funnel_summary
@@ -71,9 +106,7 @@ build_funnel_flow_plot <- function(funnel_summary) {
       arrow = arrow(length = unit(0.15, "cm")), color = liser_rouge
     ) +
     coord_cartesian(xlim = c(-0.5, box_width + 2 + 6), clip = "off") +
-    theme_void() +
-    labs(title = "Intervention funnel") +
-    theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold", color = liser_bleu))
+    theme_void()
 }
 
 # Short label for the exclusion side-box at each step

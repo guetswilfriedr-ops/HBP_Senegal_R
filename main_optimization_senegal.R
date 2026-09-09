@@ -75,9 +75,35 @@ scenario_budget <- optimize_benefit_package(
   league_table, cet_usd_per_daly = config$cet_usd_per_daly, budget_usd = config$consumables_budget_usd
 )
 
+# ------------------------------------------------------------
+# Illustrative Stage 2: budget AND health-workforce time constraints
+# together, the full method this engine was built for. Senegal has no
+# workforce-capacity survey yet, so this scenario stands in with an
+# external benchmark's HR-need and HR-capacity figures (see
+# build_hr_needs_8bucket()/build_illustrative_hr_capacity(),
+# R/18_constrained_optimization.R) - the same engine, method, and (for
+# the subset of interventions the crosswalk reaches) need data as the
+# published application this engine is validated against
+# (main_optimization_external_validation.R). It demonstrates the full
+# production chain end-to-end and is explicitly NOT a Senegal-specific
+# result: replace hr_needs/hr_capacity_minutes with a Senegal
+# workforce source the moment one exists, and every number here
+# updates automatically.
+# ------------------------------------------------------------
+hr_data <- build_hr_needs_8bucket(league_table, config$raw_data_path)
+hr_capacity_illustrative <- build_illustrative_hr_capacity()
+scenario_stage2_illustrative <- optimize_benefit_package(
+  hr_data$league_table_subset,
+  cet_usd_per_daly = config$cet_usd_per_daly,
+  budget_usd = config$consumables_budget_usd,
+  hr_needs = hr_data$hr_needs,
+  hr_capacity_minutes = hr_capacity_illustrative
+)
+
 scenario_results <- list(
-  "No budget constraint (CET only)" = scenario_unconstrained,
-  "Provisional budget ($120M)"      = scenario_budget
+  "No budget constraint (CET only)"       = scenario_unconstrained,
+  "Provisional budget ($120M)"            = scenario_budget,
+  "Illustrative Stage 2 (proxy HR data)"  = scenario_stage2_illustrative
 )
 
 table2 <- build_scenario_comparison_table(scenario_results)
@@ -99,7 +125,15 @@ resource_levels <- c(
   "Doctor/\nClinical officer", "Nursing\nstaff", "Pharmaceutical\nstaff",
   "Mental Health\nstaff", "Nutrition\nstaff", "Consumables\nbudget"
 )
-scenario_levels <- c("(i) No budget constraint (CET only)", "(ii) Provisional budget ($120M)")
+resource_to_cadre <- c(
+  "Doctor/\nClinical officer" = "medstaff", "Nursing\nstaff" = "nursingstaff",
+  "Pharmaceutical\nstaff" = "pharmstaff", "Mental Health\nstaff" = "mentalstaff",
+  "Nutrition\nstaff" = "nutristaff"
+)
+scenario_levels <- c(
+  "(i) No budget constraint (CET only)", "(ii) Provisional budget ($120M)",
+  "(iii) Illustrative Stage 2 (proxy HR data)"
+)
 
 build_program_share <- function(result, denom_usd) {
   result$package %>%
@@ -110,24 +144,50 @@ build_program_share <- function(result, denom_usd) {
     dplyr::arrange(main_category)
 }
 
+# scenario_stage2_illustrative$package already carries the 8 HR-need
+# columns (hr_data$league_table_subset was built by left-joining them
+# onto the league table before solving, so optimize_benefit_package()'s
+# mutate() naturally carried them through) - usable directly for the
+# per-cadre, per-program breakdown below.
+build_cadre_program_share <- function(cadre) {
+  scenario_stage2_illustrative$package %>%
+    dplyr::filter(coverage_share > 1e-6) %>%
+    dplyr::group_by(main_category) %>%
+    dplyr::summarise(minutes = sum(cases_covered * .data[[cadre]]), .groups = "drop") %>%
+    dplyr::mutate(pct = 100 * minutes / hr_capacity_illustrative[[cadre]]) %>%
+    dplyr::select(main_category, pct) %>%
+    dplyr::arrange(main_category)
+}
+
 program_data <- dplyr::bind_rows(
   build_program_share(scenario_unconstrained, config$consumables_budget_usd) %>%
-    dplyr::mutate(scenario = scenario_levels[1]),
+    dplyr::mutate(scenario = scenario_levels[1], resource = "Consumables\nbudget"),
   build_program_share(scenario_budget, config$consumables_budget_usd) %>%
-    dplyr::mutate(scenario = scenario_levels[2])
+    dplyr::mutate(scenario = scenario_levels[2], resource = "Consumables\nbudget"),
+  build_program_share(scenario_stage2_illustrative, config$consumables_budget_usd) %>%
+    dplyr::mutate(scenario = scenario_levels[3], resource = "Consumables\nbudget"),
+  dplyr::bind_rows(lapply(names(resource_to_cadre), function(res) {
+    build_cadre_program_share(resource_to_cadre[[res]]) %>%
+      dplyr::mutate(scenario = scenario_levels[3], resource = res)
+  }))
 ) %>%
   dplyr::mutate(
-    resource = factor("Consumables\nbudget", levels = resource_levels),
+    resource = factor(resource, levels = resource_levels),
     scenario = factor(scenario, levels = scenario_levels)
   )
 
 resource_totals <- program_data %>%
-  dplyr::group_by(scenario) %>%
+  dplyr::group_by(scenario, resource) %>%
   dplyr::summarise(total_pct = sum(pct), .groups = "drop") %>%
-  dplyr::mutate(label_y = total_pct + max(total_pct) * 0.04)
+  dplyr::group_by(scenario) %>%
+  dplyr::mutate(label_y = total_pct + max(total_pct) * 0.04) %>%
+  dplyr::ungroup()
 
+# Placeholders only where data genuinely isn't available: the five HR
+# resources under scenarios (i)/(ii) (no HR constraint applied there
+# at all).
 placeholder_data <- expand.grid(
-  scenario = factor(scenario_levels, levels = scenario_levels),
+  scenario = factor(scenario_levels[1:2], levels = scenario_levels),
   resource = factor(resource_levels[1:5], levels = resource_levels),
   stringsAsFactors = FALSE
 )
@@ -152,8 +212,8 @@ fig1_budget_use <- ggplot() +
   ) +
   geom_text(
     data = resource_totals,
-    aes(x = resource_levels[6], y = label_y, label = paste0(round(total_pct, 1), "%")),
-    color = liser_bleu, fontface = "bold", size = 3.6
+    aes(x = resource, y = label_y, label = paste0(round(total_pct, 1), "%")),
+    color = liser_bleu, fontface = "bold", size = 3.2
   ) +
   scale_x_discrete(limits = resource_levels, drop = FALSE) +
   scale_fill_manual(values = liser_categorical_palette, name = NULL, na.translate = FALSE) +
@@ -163,16 +223,7 @@ fig1_budget_use <- ggplot() +
   ) +
   facet_wrap(~scenario, ncol = 1) +
   guides(fill = guide_legend(ncol = 3, byrow = TRUE)) +
-  labs(
-    title = "Health-system resource use by program",
-    subtitle = "Percentage of each resource required, by disease program, under the two budget scenarios",
-    x = "Resource", y = "Percentage of resource required",
-    caption = stringr::str_wrap(paste0(
-      "Health-worker-cadre resources await Senegal-specific workforce-capacity data (Stage 2); only the ",
-      "consumables budget is modelled so far. Scenario (i) exceeds 100% because it funds every cost-effective ",
-      "intervention regardless of the provisional $", format(config$consumables_budget_usd / 1e6, big.mark = ","), "M budget."
-    ), width = 110)
-  ) +
+  labs(x = "Resource", y = "Percentage of resource required") +
   liser_chart_theme() +
   theme(
     legend.position = "bottom", legend.text = element_text(size = 8.5),
@@ -180,7 +231,7 @@ fig1_budget_use <- ggplot() +
     strip.text = element_text(face = "bold", color = liser_bleu, size = rel(1))
   )
 
-export_figure(fig1_budget_use, "optimization_fig1_budget_use_by_program", config$output_figures_dir, width = 9, height = 11)
+export_figure(fig1_budget_use, "optimization_fig1_budget_use_by_program", config$output_figures_dir, width = 9, height = 15)
 
 # ------------------------------------------------------------
 # Figure 2: marginal value of investing $1000 in different
@@ -193,6 +244,15 @@ scenario_plus1000 <- optimize_benefit_package(
 )
 marginal_value_budget <- scenario_plus1000$summary$net_dalys_averted - scenario_budget$summary$net_dalys_averted
 
+scenario_stage2_plus1000 <- optimize_benefit_package(
+  hr_data$league_table_subset,
+  cet_usd_per_daly = config$cet_usd_per_daly,
+  budget_usd = config$consumables_budget_usd + 1000,
+  hr_needs = hr_data$hr_needs,
+  hr_capacity_minutes = hr_capacity_illustrative
+)
+marginal_value_budget_stage2 <- scenario_stage2_plus1000$summary$net_dalys_averted - scenario_stage2_illustrative$summary$net_dalys_averted
+
 # Under no budget constraint at all, every intervention with a
 # positive net health benefit is already fully covered (confirmed by
 # n_interventions_in_package == n_interventions_positive_nethealth in
@@ -200,9 +260,9 @@ marginal_value_budget <- scenario_plus1000$summary$net_dalys_averted - scenario_
 # marginal value of the consumables budget is exactly 0 in that
 # scenario, not a figure requiring its own solve (Inf + 1000 = Inf).
 marginal_data <- data.frame(
-  resource = factor(rep(resource_levels[6], 2), levels = resource_levels),
+  resource = factor(rep(resource_levels[6], 3), levels = resource_levels),
   scenario = factor(scenario_levels, levels = scenario_levels),
-  value = c(0, marginal_value_budget)
+  value = c(0, marginal_value_budget, marginal_value_budget_stage2)
 )
 
 placeholder_marginal <- expand.grid(
@@ -230,23 +290,14 @@ fig2_marginal_value <- ggplot() +
   scale_x_discrete(limits = rev(resource_levels), drop = FALSE) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.18))) +
   facet_wrap(~scenario, ncol = 1) +
-  labs(
-    title = "Marginal value of investing $1000 in different health-system resources",
-    subtitle = "Additional net DALYs averted from $1,000 more of each resource, under the two budget scenarios",
-    x = "Resource", y = "Net DALYs averted",
-    caption = stringr::str_wrap(paste0(
-      "Health-worker-cadre resources await Senegal-specific workforce-capacity data (Stage 2). Scenario (i) is ",
-      "0 by construction: with no budget constraint, every intervention with a positive net health benefit is ",
-      "already fully covered, so extra budget cannot buy more health."
-    ), width = 110)
-  ) +
+  labs(x = "Resource", y = "Net DALYs averted") +
   liser_chart_theme() +
   theme(
     axis.text.y = element_text(face = "bold", color = liser_bleu, size = rel(0.85)),
     strip.text = element_text(face = "bold", color = liser_bleu, size = rel(1))
   )
 
-export_figure(fig2_marginal_value, "optimization_fig2_marginal_value", config$output_figures_dir, width = 9, height = 8)
+export_figure(fig2_marginal_value, "optimization_fig2_marginal_value", config$output_figures_dir, width = 9, height = 11)
 
 # ------------------------------------------------------------
 # Excel export: Table 2, Table 3, and per-scenario package detail
