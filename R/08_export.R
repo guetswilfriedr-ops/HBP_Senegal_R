@@ -156,7 +156,7 @@ pipeline_references <- function() {
     ),
     "Constrained optimization" = list(
       citation = "Budget-constrained coverage-optimization approach: linear programming that maximises net health benefit (DALYs averted net of opportunity cost) subject to a consumables-budget constraint, a standard method in health-benefits-package prioritization analysis.",
-      used_for = "Scenario comparison and program-inclusion-rate tables (R/18_constrained_optimization.R, main_optimization_senegal.R)"
+      used_for = "Scenario comparison and program-inclusion-rate tables (R/18_constrained_optimization.R, main_optimization.R)"
     ),
     "Distributional cost-effectiveness analysis (DCEA)" = list(
       citation = "Equity-stratified distributional cost-effectiveness analysis (wealth-quintile and urban/rural strata), following standard DCEA methodology.",

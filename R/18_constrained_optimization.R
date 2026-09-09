@@ -34,7 +34,7 @@
 # method (see data/external/reference_benchmark/): this engine
 # reproduces that study's own headline results to the figure once its
 # own two-cost-concept convention is respected (see
-# budget_cost_per_case below) - see main_optimization_external_validation.R.
+# budget_cost_per_case below) - see validate_optimization_against_reference.R.
 # ============================================================
 
 library(lpSolve)
@@ -225,7 +225,7 @@ build_hr_needs_8bucket <- function(league_table, raw_data_path) {
 #' Illustrative Stage-2 HR-capacity assumption: total patient-facing
 #' minutes per year, by the same 8 cadre groups, read from this
 #' project's external validation benchmark (data/external/
-#' reference_benchmark/ - see main_optimization_external_validation.R).
+#' reference_benchmark/ - see validate_optimization_against_reference.R).
 #' This is NOT a Senegal-specific measurement - it stands in for a
 #' Senegal workforce-capacity survey that does not exist yet, purely
 #' to demonstrate the full budget-and-workforce-constrained method

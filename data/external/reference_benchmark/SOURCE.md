@@ -12,7 +12,7 @@ data. It is a one-off benchmark, not a project input: nothing under
   case, drug/commodities cost, health-worker time needs by cadre) from a
   peer-reviewed constrained-optimization study.
 - `data/published_reference_results.csv`: that same study's own published
-  headline results, used as the target `main_optimization_external_validation.R`
+  headline results, used as the target `validate_optimization_against_reference.R`
   reproduces.
 
 Kept out of `output/` and out of anything sent externally - this is a private
