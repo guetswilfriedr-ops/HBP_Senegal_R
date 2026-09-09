@@ -61,7 +61,6 @@ build_funnel_flow_plot <- function(funnel_summary) {
     )
 
   exclusion_boxes <- steps %>%
-    filter(n_excluded > 0) %>%
     mutate(
       y = y_top - (match(step, steps$step) - 1) * gap,
       label = paste0("Excluded: ", n_excluded, "\n", unname(reason_short_labels[as.character(step)]))
@@ -75,7 +74,7 @@ build_funnel_flow_plot <- function(funnel_summary) {
 
   side_arrows <- exclusion_boxes %>%
     transmute(
-      x = box_width + 0.1, xend = box_width + 1.9,
+      x = box_width, xend = box_width + 2,
       y = y, yend = y
     )
 
@@ -92,11 +91,11 @@ build_funnel_flow_plot <- function(funnel_summary) {
     geom_rect(
       data = exclusion_boxes,
       aes(xmin = box_width + 2, xmax = box_width + 2 + 5.5, ymin = y - box_height / 2, ymax = y + box_height / 2),
-      fill = liser_rouge_light, color = liser_rouge
+      fill = liser_rouge, color = "white"
     ) +
     geom_text(
       data = exclusion_boxes, aes(x = box_width + 2 + 2.75, y = y, label = label),
-      color = liser_rouge_fonce, size = 3.1, lineheight = 0.95
+      color = "white", size = 3.1, lineheight = 0.95
     ) +
     geom_segment(
       data = arrows, aes(x = x, xend = xend, y = y, yend = yend),
