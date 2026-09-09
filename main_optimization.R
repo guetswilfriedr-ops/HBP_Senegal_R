@@ -2,32 +2,37 @@
 # Constrained optimization on Senegal data - the single entry point
 # for this analysis (see R/18_constrained_optimization.R for the
 # solver itself; validate_optimization_against_reference.R is a
-# separate, occasional check that the solver's logic matches a
-# published external application - not part of this run).
+# separate, occasional check that the solver's logic - including the
+# task-shifting mechanism below - matches a published external
+# application, both its base and its task-shifting scenario).
 #
-# Runs the optimization engine against the real Senegal league table
-# under three scenarios:
-#   - No budget constraint (CET only) - an upper bound: every
-#     intervention with a positive net health benefit, unconstrained.
-#   - Provisional budget (config$consumables_budget_usd - a working
-#     value pending a confirmed Senegal figure) as the only resource
-#     constraint.
-#   - The same provisional budget together with health-workforce time
-#     constraints by cadre. Senegal has no workforce-capacity survey of
-#     its own yet, so this scenario draws health-worker time-per-case
-#     and capacity figures from the published literature via the same
-#     name crosswalk already used for Senegal's own effectiveness
-#     fallback (R/04_effectiveness.R) - scoped to the subset of
-#     interventions that crosswalk reaches (see build_hr_needs_8bucket(),
-#     R/18_constrained_optimization.R).
+# The two scenarios that drive Table 2/3 and Figures 1/2 both apply
+# the same provisional budget AND health-workforce time constraints by
+# cadre (Senegal has no workforce-capacity survey of its own yet, so
+# health-worker time-per-case and capacity figures are drawn from the
+# published literature via the same name crosswalk already used for
+# Senegal's own effectiveness fallback - R/04_effectiveness.R - scoped
+# to the subset of interventions that crosswalk reaches; see
+# build_hr_needs_8bucket(), R/18_constrained_optimization.R). They
+# differ only in whether task-shifting is allowed:
+#   - Base scenario: each cadre's time need is as recorded.
+#   - Task-shifting scenario: pharmaceutical-staff and nutrition-staff
+#     task time is reassigned onto nursing staff (nurses take over
+#     those tasks) - apply_task_shifting_to_nursing(), R/18. This is
+#     the specific reassignment validated against the published
+#     external benchmark (see validate_optimization_against_reference.R).
+# Two further scenarios (no constraint at all; budget only, no HR) are
+# kept in Table 2 as upper-bound/reference columns, over the full
+# league table rather than the crosswalk-matched subset.
 #
 # Produces, following the standard reporting structure used in the
 # constrained-optimization literature for this kind of analysis:
 #   - Table 2 equivalent: scenario comparison, transposed
 #     metric-by-scenario layout (including per-cadre capacity used).
-#   - Table 3 equivalent: rate of inclusion by disease program.
-#   - Figure 1 equivalent: resource use by program - panels (a) budget
-#     only, (b) budget + health-workforce constraints.
+#   - Table 3 equivalent: rate of inclusion by disease program, base
+#     vs. task-shifting scenario.
+#   - Figure 1 equivalent: resource use by program - panels (a) base
+#     scenario, (b) task-shifting scenario.
 #   - Figure 2 equivalent: marginal net DALYs averted from an
 #     additional $1000 per resource - same two panels.
 #
@@ -74,7 +79,8 @@ funnel <- build_intervention_funnel(
 league_table <- funnel$league_table
 
 # ------------------------------------------------------------
-# Scenarios
+# Reference/upper-bound scenarios, over the full league table (no HR
+# constraint - kept in Table 2 only, not part of Table 3 or Figures 1/2).
 # ------------------------------------------------------------
 scenario_unconstrained <- optimize_benefit_package(
   league_table, cet_usd_per_daly = config$cet_usd_per_daly, budget_usd = Inf
@@ -84,30 +90,31 @@ scenario_budget <- optimize_benefit_package(
 )
 
 # ------------------------------------------------------------
-# Budget AND health-workforce time constraints together, the full
-# method this engine was built for. Senegal has no workforce-capacity
-# survey yet, so health-worker time-per-case (need) and capacity
-# figures are drawn from the published literature behind this
-# project's external validation benchmark (main_optimization_
-# external_validation.R) - the same source already used, via the same
-# name crosswalk, as Senegal's own effectiveness fallback (R/04).
-# build_hr_needs_8bucket() restricts the league table to the
-# interventions this crosswalk actually reaches AND that pass the
-# usual cost/effectiveness/case-volume filter (69 by name, 68 once
-# that filter is applied - well under the 93 the budget-only scenarios
-# use, since not every Senegal intervention has a same-named
-# counterpart in the reference country's own tool). Every number in
-# this scenario is scoped to that 68-intervention subset, not the
-# full league table; replace hr_needs/hr_capacity_minutes with a
-# Senegal workforce source the moment one exists, and everything here
-# updates automatically.
+# Base and task-shifting scenarios: budget AND health-workforce time
+# constraints together, the full method this engine was built for.
+# Senegal has no workforce-capacity survey yet, so health-worker
+# time-per-case (need) and capacity figures are drawn from the
+# published literature behind this project's external validation
+# benchmark (validate_optimization_against_reference.R) - the same
+# source already used, via the same name crosswalk, as Senegal's own
+# effectiveness fallback (R/04). build_hr_needs_8bucket() restricts
+# the league table to the interventions this crosswalk actually
+# reaches AND that pass the usual cost/effectiveness/case-volume
+# filter (69 by name, 68 once that filter is applied - well under the
+# 93 the reference scenarios above use, since not every Senegal
+# intervention has a same-named counterpart in the reference country's
+# own tool). Every number in these two scenarios is scoped to that
+# 68-intervention subset, not the full league table; replace
+# hr_needs/hr_capacity_minutes with a Senegal workforce source the
+# moment one exists, and everything here updates automatically.
 # ------------------------------------------------------------
 hr_data <- build_hr_needs_8bucket(league_table, config$raw_data_path)
 hr_capacity_illustrative <- build_illustrative_hr_capacity()
 n_hr_matched <- nrow(hr_data$league_table_subset)
-cat("Health-workforce-constrained scenario: ", n_hr_matched, " of ", nrow(league_table),
+cat("Health-workforce-constrained scenarios: ", n_hr_matched, " of ", nrow(league_table),
     " league-table interventions matched to the reference workforce dataset by name.\n", sep = "")
-scenario_stage2_illustrative <- optimize_benefit_package(
+
+scenario_base <- optimize_benefit_package(
   hr_data$league_table_subset,
   cet_usd_per_daly = config$cet_usd_per_daly,
   budget_usd = config$consumables_budget_usd,
@@ -115,26 +122,41 @@ scenario_stage2_illustrative <- optimize_benefit_package(
   hr_capacity_minutes = hr_capacity_illustrative
 )
 
+# Task-shifting: pharmaceutical-staff and nutrition-staff task time
+# reassigned onto nursing staff (see apply_task_shifting_to_nursing(),
+# R/18_constrained_optimization.R, for why this specific pair of
+# cadres and how it was validated).
+hr_needs_task_shifted <- apply_task_shifting_to_nursing(hr_data$hr_needs)
+scenario_task_shifting <- optimize_benefit_package(
+  hr_data$league_table_subset,
+  cet_usd_per_daly = config$cet_usd_per_daly,
+  budget_usd = config$consumables_budget_usd,
+  hr_needs = hr_needs_task_shifted,
+  hr_capacity_minutes = hr_capacity_illustrative
+)
+
 scenario_results <- list(
-  "No budget constraint (CET only)"       = scenario_unconstrained,
-  "Provisional budget ($120M)"            = scenario_budget,
-  "With health-workforce constraints"     = scenario_stage2_illustrative
+  "No constraint (CET only)"       = scenario_unconstrained,
+  "Budget only ($120M, no HR)"     = scenario_budget,
+  "Base scenario"                  = scenario_base,
+  "Task-shifting scenario"         = scenario_task_shifting
 )
 
 table2 <- build_scenario_comparison_table(scenario_results)
-table3 <- build_program_inclusion_table(scenario_results)
+table3 <- build_program_inclusion_table(list(
+  "Base scenario"           = scenario_base,
+  "Task-shifting scenario"  = scenario_task_shifting
+))
 
 # ------------------------------------------------------------
 # Figure 1: health-system resource use by program. The standard
 # version of this chart (see the reference reporting structure) puts
 # one bar PER RESOURCE on the x-axis - each health-worker cadre, plus
 # the consumables budget - stacked and colour-coded by the disease
-# program consuming that resource, panels (a)/(b) matching the two
-# scenarios below. Senegal does not have health-worker-cadre data of
-# its own yet, so those bars are drawn as explicit "not yet available"
-# placeholders in panel (a) rather than left out - the resource axis
-# stays comparable to the standard version of this chart, and the gap
-# is visible rather than silently absent.
+# program consuming that resource, panels (a) base scenario, (b)
+# task-shifting scenario. Both panels have real health-worker-cadre
+# bars (no placeholders): the health-workforce constraint applies in
+# both, they differ only in the task-shifting reassignment.
 #
 # Only four of the eight reference cadres appear on this axis
 # (doctor/clinical officer, nursing, pharmaceutical, mental health).
@@ -152,13 +174,7 @@ resource_to_cadre <- c(
   "Doctor/\nClinical officer" = "medstaff", "Nursing\nstaff" = "nursingstaff",
   "Pharmaceutical\nstaff" = "pharmstaff", "Mental Health\nstaff" = "mentalstaff"
 )
-# Two panels, mirroring the standard (a)/(b) layout used for this
-# figure in the constrained-optimization literature: (a) the budget
-# alone, (b) budget together with health-workforce time. The
-# no-budget-constraint scenario is not one of the two panels here
-# (it isn't in the source layout either) - it stays in Table 2/3 as a
-# useful upper-bound check.
-scenario_levels <- c("(a) Budget only ($120M)", "(b) Budget + health-workforce constraints")
+scenario_levels <- c("(a) Base scenario", "(b) Task-shifting scenario")
 
 build_program_share <- function(result, denom_usd) {
   result$package %>%
@@ -169,29 +185,38 @@ build_program_share <- function(result, denom_usd) {
     dplyr::arrange(main_category)
 }
 
-# scenario_stage2_illustrative$package already carries the 8 HR-need
-# columns (hr_data$league_table_subset was built by left-joining them
-# onto the league table before solving, so optimize_benefit_package()'s
-# mutate() naturally carried them through) - usable directly for the
-# per-cadre, per-program breakdown below.
-build_cadre_program_share <- function(cadre) {
-  scenario_stage2_illustrative$package %>%
+# Per-cadre, per-program share of capacity used, for one scenario.
+# hr_needs_used must be the SAME hr_needs matrix passed to
+# optimize_benefit_package() for that scenario (aligned by row with
+# hr_data$league_table_subset) - not read back off result$package,
+# because the task-shifting scenario's package still carries the
+# ORIGINAL (pre-shift) cadre columns from hr_data$league_table_subset;
+# only the matrix actually solved over reflects the reassignment.
+build_cadre_program_share <- function(result, hr_needs_used, cadre) {
+  pkg <- result$package
+  pkg$.cadre_minutes_percase <- hr_needs_used[[cadre]]
+  pkg %>%
     dplyr::filter(coverage_share > 1e-6) %>%
     dplyr::group_by(main_category) %>%
-    dplyr::summarise(minutes = sum(cases_covered * .data[[cadre]]), .groups = "drop") %>%
+    dplyr::summarise(minutes = sum(cases_covered * .cadre_minutes_percase), .groups = "drop") %>%
     dplyr::mutate(pct = 100 * minutes / hr_capacity_illustrative[[cadre]]) %>%
     dplyr::select(main_category, pct) %>%
     dplyr::arrange(main_category)
 }
 
+panel_hr_needs <- setNames(list(hr_data$hr_needs, hr_needs_task_shifted), scenario_levels)
+panel_result <- setNames(list(scenario_base, scenario_task_shifting), scenario_levels)
+
 program_data <- dplyr::bind_rows(
-  build_program_share(scenario_budget, config$consumables_budget_usd) %>%
+  build_program_share(scenario_base, config$consumables_budget_usd) %>%
     dplyr::mutate(scenario = scenario_levels[1], resource = "Consumables\nbudget"),
-  build_program_share(scenario_stage2_illustrative, config$consumables_budget_usd) %>%
+  build_program_share(scenario_task_shifting, config$consumables_budget_usd) %>%
     dplyr::mutate(scenario = scenario_levels[2], resource = "Consumables\nbudget"),
-  dplyr::bind_rows(lapply(names(resource_to_cadre), function(res) {
-    build_cadre_program_share(resource_to_cadre[[res]]) %>%
-      dplyr::mutate(scenario = scenario_levels[2], resource = res)
+  dplyr::bind_rows(lapply(scenario_levels, function(sc) {
+    dplyr::bind_rows(lapply(names(resource_to_cadre), function(res) {
+      build_cadre_program_share(panel_result[[sc]], panel_hr_needs[[sc]], resource_to_cadre[[res]]) %>%
+        dplyr::mutate(scenario = sc, resource = res)
+    }))
   }))
 ) %>%
   dplyr::mutate(
@@ -206,23 +231,7 @@ resource_totals <- program_data %>%
   dplyr::mutate(label_y = total_pct + max(total_pct) * 0.04) %>%
   dplyr::ungroup()
 
-# Placeholder only where data genuinely isn't available: the four HR
-# resources under panel (a) (budget only, no HR constraint applied).
-placeholder_data <- expand.grid(
-  scenario = factor(scenario_levels[1], levels = scenario_levels),
-  resource = factor(resource_levels[1:4], levels = resource_levels),
-  stringsAsFactors = FALSE
-)
-
 fig1_budget_use <- ggplot() +
-  geom_col(
-    data = placeholder_data, aes(x = resource, y = 100),
-    fill = liser_gris_light, width = 0.6
-  ) +
-  geom_text(
-    data = placeholder_data, aes(x = resource, y = 50, label = "Data not yet\navailable"),
-    size = 2.3, color = "grey40", lineheight = 0.9, fontface = "italic"
-  ) +
   geom_col(
     data = program_data, aes(x = resource, y = pct, fill = main_category),
     width = 0.6, color = "white", linewidth = 0.3
@@ -258,34 +267,38 @@ export_figure(fig1_budget_use, "optimization_fig1_budget_use_by_program", config
 # ------------------------------------------------------------
 # Figure 2: marginal value of investing $1000 in different
 # health-system resources, panels (a)/(b) matching Figure 1, same
-# resource axis. Health-worker cadres are placeholders in BOTH panels
-# here (unlike Figure 1): converting $1,000 into cadre time needs a
-# salary figure by cadre, which this exercise does not have.
+# resource axis. Health-worker cadres remain placeholders in both
+# panels: converting $1,000 into cadre time needs a salary figure by
+# cadre, which this exercise does not have. Only the consumables-budget
+# bar is real in each panel.
 # ------------------------------------------------------------
-scenario_plus1000 <- optimize_benefit_package(
-  league_table, cet_usd_per_daly = config$cet_usd_per_daly, budget_usd = config$consumables_budget_usd + 1000
-)
-marginal_value_budget <- scenario_plus1000$summary$net_dalys_averted - scenario_budget$summary$net_dalys_averted
-
-scenario_stage2_plus1000 <- optimize_benefit_package(
+scenario_base_plus1000 <- optimize_benefit_package(
   hr_data$league_table_subset,
   cet_usd_per_daly = config$cet_usd_per_daly,
   budget_usd = config$consumables_budget_usd + 1000,
   hr_needs = hr_data$hr_needs,
   hr_capacity_minutes = hr_capacity_illustrative
 )
-marginal_value_budget_stage2 <- scenario_stage2_plus1000$summary$net_dalys_averted - scenario_stage2_illustrative$summary$net_dalys_averted
+marginal_value_base <- scenario_base_plus1000$summary$net_dalys_averted - scenario_base$summary$net_dalys_averted
+
+scenario_task_shifting_plus1000 <- optimize_benefit_package(
+  hr_data$league_table_subset,
+  cet_usd_per_daly = config$cet_usd_per_daly,
+  budget_usd = config$consumables_budget_usd + 1000,
+  hr_needs = hr_needs_task_shifted,
+  hr_capacity_minutes = hr_capacity_illustrative
+)
+marginal_value_task_shifting <- scenario_task_shifting_plus1000$summary$net_dalys_averted - scenario_task_shifting$summary$net_dalys_averted
 
 marginal_data <- data.frame(
   resource = factor(rep(resource_levels[5], 2), levels = resource_levels),
   scenario = factor(scenario_levels, levels = scenario_levels),
-  value = c(marginal_value_budget, marginal_value_budget_stage2)
+  value = c(marginal_value_base, marginal_value_task_shifting)
 )
 
 # Placeholder only where data genuinely isn't available: converting
 # $1,000 into cadre time needs a salary figure by cadre, not available
-# for either panel, so both panels show the HR placeholders here
-# (unlike Figure 1, where panel (b) has real per-cadre resource-use data).
+# for either panel.
 placeholder_marginal <- expand.grid(
   scenario = factor(scenario_levels, levels = scenario_levels),
   resource = factor(resource_levels[1:4], levels = resource_levels),
@@ -334,6 +347,18 @@ write_xlsx_sheet(
 )
 write_xlsx_sheet(
   wb, "Detail - provisional budget", build_optimization_package_table(scenario_budget), freeze_col = 1,
+  currency_cols = c("ICER ($)", "Cost incurred ($)", "Budget-relevant cost incurred ($)"),
+  decimal_cols = c("Coverage share solved (%)", "DALYs averted"),
+  integer_cols = "Cases covered"
+)
+write_xlsx_sheet(
+  wb, "Detail - base scenario", build_optimization_package_table(scenario_base), freeze_col = 1,
+  currency_cols = c("ICER ($)", "Cost incurred ($)", "Budget-relevant cost incurred ($)"),
+  decimal_cols = c("Coverage share solved (%)", "DALYs averted"),
+  integer_cols = "Cases covered"
+)
+write_xlsx_sheet(
+  wb, "Detail - task-shifting scenario", build_optimization_package_table(scenario_task_shifting), freeze_col = 1,
   currency_cols = c("ICER ($)", "Cost incurred ($)", "Budget-relevant cost incurred ($)"),
   decimal_cols = c("Coverage share solved (%)", "DALYs averted"),
   integer_cols = "Cases covered"
@@ -390,11 +415,9 @@ st4 <- data.frame(
   check.names = FALSE
 )
 
-st5 <- build_supp_table_outcomes(scenario_budget)
+st5 <- build_supp_table_outcomes(scenario_base)
 
-st6 <- data.frame(
-  Note = "Task-shifting scenario requires Senegal-specific health-worker-cadre time and capacity data, not yet available. No equivalent scenario is reported this round."
-)
+st6 <- build_supp_table_outcomes(scenario_task_shifting)
 
 st7 <- data.frame(
   Group = character(0), Interventions = character(0), Note = character(0)
@@ -436,18 +459,20 @@ write_xlsx_sheet(wb_supp, "ST1 - Interventions", st1, freeze_col = 2,
 write_xlsx_sheet(wb_supp, "ST2 - Input constraints", st2, freeze_col = 0)
 write_xlsx_sheet(wb_supp, "ST3 - Time per worker", st3, freeze_col = 0)
 write_xlsx_sheet(wb_supp, "ST4 - Time per cadre", st4, freeze_col = 0)
-write_xlsx_sheet(wb_supp, "ST5 - Outcomes (budget)", st5, freeze_col = 2,
+write_xlsx_sheet(wb_supp, "ST5 - Outcomes (base scenario)", st5, freeze_col = 2,
   currency_cols = "Consumable expenditure required ($)", decimal_cols = "DALYs averted", integer_cols = "Total cases covered")
-write_xlsx_sheet(wb_supp, "ST6 - Outcomes (task-shift)", st6, freeze_col = 0)
+write_xlsx_sheet(wb_supp, "ST6 - Outcomes (task-shift)", st6, freeze_col = 2,
+  currency_cols = "Consumable expenditure required ($)", decimal_cols = "DALYs averted", integer_cols = "Total cases covered")
 write_xlsx_sheet(wb_supp, "ST7 - Substitutes", st7, freeze_col = 0)
 write_xlsx_sheet(wb_supp, "ST8 - Complements", st8, freeze_col = 0)
 write_xlsx_sheet(wb_supp, "ST9 - Salaries by cadre", st9, freeze_col = 0)
 write_xlsx_sheet(wb_supp, "ST10 - Scenarios summary", st10, freeze_col = 1)
 save_xlsx(wb_supp, "optimization_supplementary_tables", config$output_tables_dir)
 
-cat("\n=== Constrained optimization (Senegal, budget-only analysis) ===\n")
+cat("\n=== Constrained optimization (Senegal): base and task-shifting scenarios ===\n")
 cat("Provisional consumables budget: $", format(config$consumables_budget_usd, big.mark = ","), "\n", sep = "")
-cat("Marginal value of $1000 more budget:", round(marginal_value_budget, 2), "net DALYs averted\n\n")
+cat("Marginal value of $1000 more budget - base scenario:", round(marginal_value_base, 2), "net DALYs averted\n")
+cat("Marginal value of $1000 more budget - task-shifting scenario:", round(marginal_value_task_shifting, 2), "net DALYs averted\n\n")
 print(table2, row.names = FALSE)
 cat("\nWritten to:", file.path(config$output_tables_dir, "optimization_results.xlsx"), "\n")
 cat("Supplementary tables written to:", file.path(config$output_tables_dir, "optimization_supplementary_tables.xlsx"), "\n")

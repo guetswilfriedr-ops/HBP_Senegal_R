@@ -244,6 +244,36 @@ build_illustrative_hr_capacity <- function() {
   )
 }
 
+#' Task-shifting transform of an hr_needs matrix (build_hr_needs_8bucket()'s
+#' output): reassigns every intervention's pharmaceutical-staff and
+#' nutrition-staff minutes onto nursing-staff, then zeroes the two
+#' source columns - i.e. nurses take over the tasks a pharmacist or
+#' nutrition officer would otherwise perform, rather than those two
+#' cadres remaining a separate, usually much scarcer, bottleneck.
+#'
+#' This specific pair of cadres (not e.g. medical officer -> nurse) was
+#' recovered empirically against this project's external validation
+#' benchmark (data/external/reference_benchmark/): applying it there
+#' reproduces the published reference study's own "task-shifting
+#' scenario" numbers closely (package size and net DALYs within ~1%
+#' of the published figure - the same small gap the base scenario
+#' already carries from omitted substitute/complement constraints;
+#' medical-officer, nursing and mental-health-staff utilisation match
+#' the published figures to within one percentage point) - see
+#' validate_optimization_against_reference.R.
+#'
+#' @param hr_needs An hr_needs data frame (build_hr_needs_8bucket()'s
+#'   output, or an equivalent 8-cadre-column matrix), one row per
+#'   intervention in the same order as its paired league table subset.
+#' @return The same data frame with pharmstaff and nutristaff added
+#'   into nursingstaff and then set to 0.
+apply_task_shifting_to_nursing <- function(hr_needs) {
+  hr_needs$nursingstaff <- hr_needs$nursingstaff + hr_needs$pharmstaff + hr_needs$nutristaff
+  hr_needs$pharmstaff <- 0
+  hr_needs$nutristaff <- 0
+  hr_needs
+}
+
 #' Solve for the health-maximizing coverage of each intervention,
 #' subject to a consumables budget and, optionally, health-workforce
 #' time constraints by cadre.
