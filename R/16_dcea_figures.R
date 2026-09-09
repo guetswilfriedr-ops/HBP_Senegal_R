@@ -50,9 +50,16 @@ build_equity_plane_plot <- function(equity_metrics, group_type = c("wealth", "re
     p <- p + geom_point(color = "#000066", alpha = 0.75, size = 2.2)
   }
 
+  top_point <- df %>% dplyr::slice_max(total_net_benefit, n = 1)
+
   p +
     geom_hline(yintercept = 0, color = "#7C797C", linewidth = 0.4) +
     geom_vline(xintercept = 0, color = "#7C797C", linewidth = 0.4) +
+    geom_text(
+      data = top_point, aes(label = intervention),
+      hjust = 0, vjust = 0.5, nudge_x = diff(range(df$inequality_impact)) * 0.02,
+      size = 3, color = "#000066", fontface = "bold"
+    ) +
     labs(
       x = "Inequality impact (DALYs averted-equivalent; population-scaled change in EDE health minus net health benefit)",
       y = "Net population health benefit (DALYs averted)"
