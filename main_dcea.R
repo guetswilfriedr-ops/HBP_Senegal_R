@@ -193,11 +193,16 @@ export_figure(
 # ------------------------------------------------------------
 # Tables
 # ------------------------------------------------------------
+wealth_pop_weights    <- get_baseline_vectors(baseline_hale, "wealth", wealth_group_ids)$pop_weights
+residence_pop_weights <- get_baseline_vectors(baseline_hale, "residence", residence_group_ids)$pop_weights
+
 export_dcea_tables(
   distribution, wealth_summary, residence_summary,
   wealth_equity, residence_equity,
   wealth_package_equity, residence_package_equity,
-  sensitivity_table, league_table, config$output_tables_dir
+  sensitivity_table, league_table, interventions_mapped,
+  dcea_prep$f_row, config$dcea$national_population,
+  wealth_pop_weights, residence_pop_weights, config$output_tables_dir
 )
 
 cat("\nDCEA outputs written to ", config$output_tables_dir, "/dcea_results.xlsx and ",

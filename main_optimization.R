@@ -400,6 +400,31 @@ write_xlsx_sheet(
   decimal_cols = c("Coverage share solved (%)", "DALYs averted"),
   integer_cols = "Cases covered"
 )
+
+# ------------------------------------------------------------
+# Pipeline traceability, optimization phase: which interventions the
+# LP included in the base/task-shifting package and, for the ones it
+# did not, why - continuing the funnel-log tradition from the
+# 4-phase league-table funnel (R/05_league_table.R) into this stage.
+# Includes the per-cadre HR-minutes-per-case columns the LP actually
+# constrained on, alongside the intervention's own cost-effectiveness
+# metrics.
+# ------------------------------------------------------------
+write_xlsx_sheet(
+  wb, "Inclusion tracking - base",
+  build_optimization_inclusion_table(scenario_base$package, config$cet_usd_per_daly, hr_data$hr_needs),
+  freeze_col = 1,
+  currency_cols = c("ICER ($)", "Cost incurred ($)"),
+  decimal_cols = "DALYs averted solution"
+)
+write_xlsx_sheet(
+  wb, "Inclusion tracking - task-shift",
+  build_optimization_inclusion_table(scenario_task_shifting$package, config$cet_usd_per_daly, hr_needs_task_shifted),
+  freeze_col = 1,
+  currency_cols = c("ICER ($)", "Cost incurred ($)"),
+  decimal_cols = "DALYs averted solution"
+)
+
 save_xlsx(wb, "optimization_results", config$output_tables_dir)
 
 # ------------------------------------------------------------

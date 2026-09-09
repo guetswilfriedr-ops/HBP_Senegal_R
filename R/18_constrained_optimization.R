@@ -608,6 +608,59 @@ optimize_benefit_package <- function(league_table,
   list(package = package, summary = summary_out)
 }
 
+#' Pipeline traceability, optimization phase: for every intervention
+#' considered by optimize_benefit_package(), whether the LP included
+#' it in the optimal package and, if not, why - continuing the funnel-
+#' log tradition from the 4-phase league-table funnel (R/05) into the
+#' constrained-optimization stage.
+#'
+#' The LP is a joint allocation, so no single constraint "causes" an
+#' exclusion the way a sequential filter does; the two reasons below
+#' are the two cases that are actually distinguishable from the
+#' solution: individually not cost-effective at this CET, vs.
+#' individually cost-effective but crowded out by the shared budget/
+#' workforce constraint.
+#'
+#' @param package The `package` element of optimize_benefit_package()'s
+#'   return value
+#' @param cet_usd_per_daly config$cet_usd_per_daly
+#' @param hr_needs Optional data frame/matrix of per-cadre minutes
+#'   needed per case, ROW-ALIGNED with `package` (e.g. hr_data$hr_needs
+#'   for the scenario that produced `package`) - each column is added
+#'   to the output, prefixed "hr_minutes_per_case_"
+#' @return One row per intervention considered by the optimization
+build_optimization_inclusion_table <- function(package, cet_usd_per_daly, hr_needs = NULL) {
+  out <- package %>%
+    mutate(
+      individually_cost_effective = !is.na(icer_usd) & icer_usd <= cet_usd_per_daly,
+      included_in_package = coverage_share > 1e-6,
+      exclusion_reason = case_when(
+        included_in_package ~ "Included",
+        !individually_cost_effective ~ "Excluded: ICER above the cost-effectiveness threshold",
+        TRUE ~ "Excluded: cost-effective individually, but crowded out by the budget/workforce constraint"
+      )
+    ) %>%
+    select(
+      Intervention = intervention, Category = main_category, `Sub-category` = sub_category,
+      `ICER ($)` = icer_usd, `DALYs averted per patient` = dalys_final,
+      `Unit cost ($)` = unit_cost_final_usd, `Cases per annum` = cases_full_2023,
+      `Coverage share solved (%)` = coverage_share, `Cases covered` = cases_covered,
+      `DALYs averted solution` = dalys_averted_solution, `Cost incurred ($)` = cost_incurred_usd,
+      `Individually cost-effective?` = individually_cost_effective,
+      `Included in package?` = included_in_package,
+      `Reason if excluded` = exclusion_reason
+    )
+
+  if (!is.null(hr_needs)) {
+    hr_needs_df <- as.data.frame(hr_needs)
+    stopifnot(nrow(hr_needs_df) == nrow(out))
+    names(hr_needs_df) <- paste0("HR minutes/case: ", names(hr_needs_df))
+    out <- dplyr::bind_cols(out, hr_needs_df)
+  }
+
+  out %>% arrange(desc(`Included in package?`), desc(`DALYs averted solution`))
+}
+
 #' Shape a named list of optimize_benefit_package() results into one
 #' data frame, one row per scenario, ready for write_xlsx_sheet()
 #' (R/08_export.R) - the scenario-comparison table this pipeline's
