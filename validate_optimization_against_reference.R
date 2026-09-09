@@ -144,15 +144,53 @@ cadre_util_table <- data.frame(
   check.names = FALSE
 )
 
+# ------------------------------------------------------------
+# Marginal value of an additional $1000 towards each cadre's time
+# (build_hr_marginal_value(), R/18) vs the published reference
+# study's own Figure 2 values (hardcoded here from that published
+# figure - not reproduced anywhere else in this dataset).
+# ------------------------------------------------------------
+workforce_size <- setNames(num(hr_constraint$`Total staff`[2:9]), names(hr_needs_benchmark))
+salary_monthly <- c(medstaff = 567, nursingstaff = 166, pharmstaff = 230, labstaff = NA,
+                     dentalstaff = NA, mentalstaff = 230, nutristaff = 166, diagstaff = NA)
+marginal_cadres <- c("medstaff", "nursingstaff", "pharmstaff", "mentalstaff", "nutristaff")
+
+marginal_base <- build_hr_marginal_value(
+  league_table_benchmark, cet_usd_per_daly = 161, budget_usd = 374300000,
+  budget_cost_per_case = league_table_benchmark$budget_cost_per_case[usable],
+  hr_needs = hr_needs_benchmark, hr_capacity_minutes = hr_capacity_minutes,
+  workforce_size = workforce_size, salary_monthly_usd = salary_monthly,
+  cadres = marginal_cadres, base_result = result
+)
+marginal_ts <- build_hr_marginal_value(
+  league_table_benchmark, cet_usd_per_daly = 161, budget_usd = 374300000,
+  budget_cost_per_case = league_table_benchmark$budget_cost_per_case[usable],
+  hr_needs = hr_needs_task_shifted, hr_capacity_minutes = hr_capacity_minutes,
+  workforce_size = workforce_size, salary_monthly_usd = salary_monthly,
+  cadres = marginal_cadres, base_result = result_ts
+)
+
+marginal_value_table <- data.frame(
+  Cadre                             = c("Medical staff", "Nursing staff", "Pharmaceutical staff", "Mental health staff", "Nutrition staff"),
+  `This engine - base`             = round(marginal_base[c("medstaff","nursingstaff","pharmstaff","mentalstaff","nutristaff")], 2),
+  `Published - base`               = c(0, 0, 3744.71, 0, 2206.61),
+  `This engine - task-shifting`    = round(marginal_ts[c("medstaff","nursingstaff","pharmstaff","mentalstaff","nutristaff")], 2),
+  `Published - task-shifting`      = c(0, 15.59, 16.6, 0, 17.3),
+  check.names = FALSE
+)
+
 wb_validation <- createWorkbook()
 write_xlsx_sheet(wb_validation, "Engine vs published reference", comparison_table, freeze_col = 1)
 write_xlsx_sheet(wb_validation, "Cadre utilisation vs published", cadre_util_table, freeze_col = 1)
+write_xlsx_sheet(wb_validation, "Marginal value vs published", marginal_value_table, freeze_col = 1)
 save_xlsx(wb_validation, "optimization_external_validation", "data/external/reference_benchmark")
 
 cat("\n=== This engine vs. a published constrained-optimization study: base and task-shifting scenarios ===\n\n")
 print(comparison_table, row.names = FALSE)
 cat("\n")
 print(cadre_util_table, row.names = FALSE)
+cat("\n")
+print(marginal_value_table, row.names = FALSE)
 
 cat("\nNote: this run omits the reference study's substitute/nested-complement constraints (not\n")
 cat("implemented in this engine - see R/18_constrained_optimization.R's file banner), so it will not\n")
@@ -164,5 +202,14 @@ cat("was recovered empirically to match this published comparison: medical-offic
 cat("mental-health-staff utilisation match the published figures to within one percentage point, and\n")
 cat("package size/net DALYs are within about 1% of published - the same margin the base scenario\n")
 cat("already carries from the omitted substitute/complement constraints.\n")
+cat("\nMarginal-value note: the published study implements task shifting by giving every intervention\n")
+cat("a choice between an unshifted and a shifted delivery mode (each solved for its own coverage share),\n")
+cat("not a full reassignment of the cadre's time - checked directly against that study's own published\n")
+cat("R code. This engine's simpler full-reassignment version reproduces nursing staff's task-shifting\n")
+cat("marginal value closely (within ~3%) and the correct zero/non-zero pattern for medical-officer and\n")
+cat("mental-health-staff time in both scenarios, but does not reproduce the exact pharmacist/nutrition-\n")
+cat("officer figures, since in this engine their capacity is no longer used at all once task shifting is\n")
+cat("applied (that cadre's marginal value is then structurally zero, not an approximation of the\n")
+cat("published figure).\n")
 cat("\nWritten to: data/external/reference_benchmark/optimization_external_validation.xlsx\n")
 cat("(internal validation output only - not for inclusion in shared deliverables, see SOURCE.md)\n")

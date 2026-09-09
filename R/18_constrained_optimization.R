@@ -244,6 +244,100 @@ build_illustrative_hr_capacity <- function() {
   )
 }
 
+#' Headcount behind build_illustrative_hr_capacity()'s minutes figure,
+#' same source and same 8 cadre groups - needed to convert a cadre's
+#' monthly salary into an equivalent number of extra patient-facing
+#' minutes per year (see build_hr_marginal_value_inputs()).
+#'
+#' @return A named numeric vector, one entry per cadre group
+build_illustrative_hr_workforce_size <- function() {
+  path <- "data/external/reference_benchmark/data/benchmark_dataset.xlsx"
+  hr_constraint <- openxlsx::read.xlsx(path, sheet = "hr_constraint", colNames = TRUE)
+  colnames(hr_constraint) <- as.character(unlist(hr_constraint[1, ]))
+  cadre_cols <- c("medstaff", "nursingstaff", "pharmstaff", "labstaff", "dentalstaff", "mentalstaff", "nutristaff", "diagstaff")
+  setNames(
+    suppressWarnings(as.numeric(hr_constraint$`Total staff`[2:9])),
+    cadre_cols
+  )
+}
+
+#' Monthly salary (2019 US$) by cadre, from the published reference
+#' study's own supplementary salary table - the source it cites for
+#' its "marginal value of $1000" figure (consumables or health-worker
+#' salaries by cadre). Not present in benchmark_dataset.xlsx itself
+#' (checked directly - no salary/wage figure anywhere in that file),
+#' so recorded here as a literature constant, the same treatment this
+#' project already gives other borrowed reference-country figures.
+#' Lab and diagnostic staff have no published figure and are not part
+#' of the reference study's own 5-cadre model either - left NA, not 0.
+hr_salary_monthly_usd <- c(
+  medstaff = 567, nursingstaff = 166, pharmstaff = 230, labstaff = NA,
+  dentalstaff = NA, mentalstaff = 230, nutristaff = 166, diagstaff = NA
+)
+
+#' Marginal net DALYs averted from an additional $1000 spent on ONE
+#' health-worker cadre's time, holding the budget and every other
+#' cadre's capacity fixed - the health-workforce equivalent of
+#' re-solving with budget_usd + 1000 for the consumables budget.
+#'
+#' $1000 buys extra staff-time via the cadre's own monthly salary:
+#' extra minutes/year = (1000 / (12 * monthly_salary)) * (capacity
+#' minutes / headcount) - i.e. $1000 worth of staff-months, each worth
+#' that cadre's average annual patient-facing minutes per worker. This
+#' mechanism, and the salary figures behind it, were validated against
+#' the published reference study's own figure: it reproduces nursing
+#' staff's marginal value in the task-shifting scenario to within
+#' ~3% (this project's own re-solve; see
+#' validate_optimization_against_reference.R) and correctly reproduces
+#' which cadres have a positive vs a null marginal value in both
+#' scenarios. It does not reproduce the published base-scenario
+#' pharmacist/nutrition-officer figures exactly (this engine's task
+#' shifting is a full reassignment of those two cadres' time onto
+#' nursing rather than the reference study's own per-intervention
+#' choice between an unshifted and a shifted delivery mode - a more
+#' detailed mechanism this engine does not implement) - see the file
+#' banner and validate_optimization_against_reference.R for the
+#' documented gap.
+#'
+#' @param league_table_subset,cet_usd_per_daly,budget_usd,hr_needs,hr_capacity_minutes
+#'   Same arguments as optimize_benefit_package().
+#' @param workforce_size Named numeric vector (build_illustrative_hr_workforce_size()),
+#'   headcount by cadre, same names as hr_capacity_minutes.
+#' @param salary_monthly_usd Named numeric vector (hr_salary_monthly_usd),
+#'   monthly salary by cadre in US$; a cadre with NA is skipped.
+#' @param cadres Character vector of cadre names to compute (a subset
+#'   of names(hr_capacity_minutes)); defaults to every cadre with a
+#'   non-NA salary.
+#' @param base_result Optional: the already-solved base
+#'   optimize_benefit_package() result for this exact league table/
+#'   budget/hr_needs/hr_capacity_minutes, to avoid re-solving it.
+#' @return A named numeric vector: net DALYs averted from the extra
+#'   $1000, one entry per requested cadre.
+build_hr_marginal_value <- function(league_table_subset, cet_usd_per_daly, budget_usd,
+                                     hr_needs, hr_capacity_minutes, workforce_size,
+                                     salary_monthly_usd, cadres = NULL, base_result = NULL,
+                                     budget_cost_per_case = NULL) {
+  if (is.null(cadres)) cadres <- names(salary_monthly_usd)[!is.na(salary_monthly_usd)]
+  if (is.null(base_result)) {
+    base_result <- optimize_benefit_package(
+      league_table_subset, cet_usd_per_daly = cet_usd_per_daly, budget_usd = budget_usd,
+      budget_cost_per_case = budget_cost_per_case, hr_needs = hr_needs, hr_capacity_minutes = hr_capacity_minutes
+    )
+  }
+  vapply(cadres, function(cadre) {
+    if (is.na(salary_monthly_usd[[cadre]])) return(NA_real_)
+    extra_minutes <- (1000 / (12 * salary_monthly_usd[[cadre]])) *
+      (hr_capacity_minutes[[cadre]] / workforce_size[[cadre]])
+    cap2 <- hr_capacity_minutes
+    cap2[[cadre]] <- cap2[[cadre]] + extra_minutes
+    res2 <- optimize_benefit_package(
+      league_table_subset, cet_usd_per_daly = cet_usd_per_daly, budget_usd = budget_usd,
+      budget_cost_per_case = budget_cost_per_case, hr_needs = hr_needs, hr_capacity_minutes = cap2
+    )
+    res2$summary$net_dalys_averted - base_result$summary$net_dalys_averted
+  }, numeric(1))
+}
+
 #' Task-shifting transform of an hr_needs matrix (build_hr_needs_8bucket()'s
 #' output): reassigns every intervention's pharmaceutical-staff and
 #' nutrition-staff minutes onto nursing-staff, then zeroes the two
