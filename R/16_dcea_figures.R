@@ -27,6 +27,10 @@ group_ids_for <- function(group_type) {
 #' Format a DALY total as millions for axis labels (e.g. 12,345,000 -> "12.3M")
 millions_label <- function(x) paste0(format(round(x / 1e6, 1), nsmall = 1), "M")
 
+#' Format a DALY total as thousands (e.g. 103,307 -> "103K") - used for
+#' quantities too small to read once axes are scaled to millions
+thousands_label <- function(x) paste0(format(round(x / 1e3, 0), nsmall = 0), "K")
+
 #' Health equity impact plane: one point per intervention, x = its
 #' impact on inequality (delta EDE, population-scaled, minus net
 #' health benefit), y = its net health benefit - the Senegal
@@ -239,15 +243,42 @@ build_benefit_breakdown_combined_plot <- function(group_summary, group_type = c(
   df <- dplyr::bind_rows(build_scenario_df("full"), build_scenario_df("realistic")) %>%
     mutate(component = factor(component, levels = c("Direct benefit", "Opportunity cost", "Net benefit")))
 
-  ggplot(df, aes(x = group, y = value, fill = component)) +
-    geom_col(data = ~ filter(.x, component != "Net benefit"), position = "identity", alpha = 0.85) +
-    geom_point(data = ~ filter(.x, component == "Net benefit"), color = "#000000", size = 2.5) +
+  # Opportunity cost is genuinely 1-2% of direct benefit for this
+  # package (a sign of a cost-effective package, not a data error) -
+  # its bar is real but reads as a sliver once the axis covers tens of
+  # millions of DALYs. Rather than a "Net benefit" dot that lands
+  # almost exactly on the direct-benefit bar's own top (indistinguishable
+  # from it at this scale, and easy to mistake for clutter), both
+  # quantities get an explicit text value instead: net benefit above
+  # the bar, opportunity cost near the axis in thousands so it stays
+  # legible even though its bar segment is not.
+  bar_df <- df %>% dplyr::filter(component != "Net benefit")
+  net_label_df <- df %>%
+    dplyr::filter(component == "Direct benefit") %>%
+    dplyr::inner_join(
+      df %>% dplyr::filter(component == "Net benefit") %>%
+        dplyr::select(group, scenario, net_value = value),
+      by = c("group", "scenario")
+    )
+  opp_label_df <- df %>% dplyr::filter(component == "Opportunity cost")
+
+  ggplot(bar_df, aes(x = group, y = value, fill = component)) +
+    geom_col(position = "identity", alpha = 0.85) +
     geom_hline(yintercept = 0, color = "#7C797C", linewidth = 0.4) +
+    geom_text(
+      data = net_label_df, aes(y = value, label = paste0("Net: ", millions_label(net_value))),
+      inherit.aes = TRUE, vjust = -0.4, size = 2.6, fontface = "bold", color = "#000066"
+    ) +
+    geom_text(
+      data = opp_label_df,
+      aes(y = pmin(value, 0), label = paste0("Opp. cost: ", thousands_label(-value))),
+      inherit.aes = TRUE, vjust = 1.3, size = 2.2, color = "#E30613"
+    ) +
     facet_wrap(~scenario, nrow = 1) +
     scale_fill_manual(values = c(
-      "Direct benefit" = "#000066", "Opportunity cost" = "#E30613", "Net benefit" = "#000000"
+      "Direct benefit" = "#000066", "Opportunity cost" = "#E30613"
     ), name = NULL) +
-    scale_y_continuous(labels = millions_label) +
+    scale_y_continuous(labels = millions_label, expand = expansion(mult = c(0.12, 0.12))) +
     labs(x = NULL, y = "DALYs (millions)") +
     liser_chart_theme(base_size = 10) +
     theme(legend.position = "top", strip.background = element_rect(fill = "#CCC6E0", color = NA))
