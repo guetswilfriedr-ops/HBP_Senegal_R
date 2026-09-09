@@ -35,6 +35,7 @@ build_top20_causes_plot <- function(raw_data_path) {
       "Non-communicable diseases" = liser_cyan
     ), name = NULL) +
     scale_y_continuous(limits = c(0, max(df$pct) * 1.12), expand = expansion(mult = c(0, 0.05))) +
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE)) +
     labs(x = NULL, y = "Share of total DALYs (%)") +
     liser_chart_theme(base_size = 11) +
     theme(legend.position = "bottom", axis.text.y = element_text(size = rel(0.85)))
