@@ -76,22 +76,29 @@ scenario_budget <- optimize_benefit_package(
 )
 
 # ------------------------------------------------------------
-# Illustrative Stage 2: budget AND health-workforce time constraints
-# together, the full method this engine was built for. Senegal has no
-# workforce-capacity survey yet, so this scenario stands in with an
-# external benchmark's HR-need and HR-capacity figures (see
-# build_hr_needs_8bucket()/build_illustrative_hr_capacity(),
-# R/18_constrained_optimization.R) - the same engine, method, and (for
-# the subset of interventions the crosswalk reaches) need data as the
-# published application this engine is validated against
-# (main_optimization_external_validation.R). It demonstrates the full
-# production chain end-to-end and is explicitly NOT a Senegal-specific
-# result: replace hr_needs/hr_capacity_minutes with a Senegal
-# workforce source the moment one exists, and every number here
+# Budget AND health-workforce time constraints together, the full
+# method this engine was built for. Senegal has no workforce-capacity
+# survey yet, so health-worker time-per-case (need) and capacity
+# figures are drawn from the published literature behind this
+# project's external validation benchmark (main_optimization_
+# external_validation.R) - the same source already used, via the same
+# name crosswalk, as Senegal's own effectiveness fallback (R/04).
+# build_hr_needs_8bucket() restricts the league table to the
+# interventions this crosswalk actually reaches AND that pass the
+# usual cost/effectiveness/case-volume filter (69 by name, 68 once
+# that filter is applied - well under the 93 the budget-only scenarios
+# use, since not every Senegal intervention has a same-named
+# counterpart in the reference country's own tool). Every number in
+# this scenario is scoped to that 68-intervention subset, not the
+# full league table; replace hr_needs/hr_capacity_minutes with a
+# Senegal workforce source the moment one exists, and everything here
 # updates automatically.
 # ------------------------------------------------------------
 hr_data <- build_hr_needs_8bucket(league_table, config$raw_data_path)
 hr_capacity_illustrative <- build_illustrative_hr_capacity()
+n_hr_matched <- nrow(hr_data$league_table_subset)
+cat("Health-workforce-constrained scenario: ", n_hr_matched, " of ", nrow(league_table),
+    " league-table interventions matched to the reference workforce dataset by name.\n", sep = "")
 scenario_stage2_illustrative <- optimize_benefit_package(
   hr_data$league_table_subset,
   cet_usd_per_daly = config$cet_usd_per_daly,
@@ -103,7 +110,7 @@ scenario_stage2_illustrative <- optimize_benefit_package(
 scenario_results <- list(
   "No budget constraint (CET only)"       = scenario_unconstrained,
   "Provisional budget ($120M)"            = scenario_budget,
-  "Illustrative scenario (literature-based workforce data)"  = scenario_stage2_illustrative
+  "With health-workforce constraints"     = scenario_stage2_illustrative
 )
 
 table2 <- build_scenario_comparison_table(scenario_results)
@@ -114,10 +121,11 @@ table3 <- build_program_inclusion_table(scenario_results)
 # version of this chart (see the reference reporting structure) puts
 # one bar PER RESOURCE on the x-axis - each health-worker cadre, plus
 # the consumables budget - stacked and colour-coded by the disease
-# program consuming that resource, one panel per scenario. Senegal
-# does not have health-worker-cadre data yet (Stage 2), so those five
-# bars are drawn as explicit "not yet available" placeholders rather
-# than left out - the resource axis stays complete and comparable to
+# program consuming that resource, panels (a)/(b) matching the two
+# scenarios below. Senegal does not have health-worker-cadre data of
+# its own yet, so those five bars are drawn as explicit "not yet
+# available" placeholders in panel (a) rather than left out - the
+# resource axis stays complete and comparable to
 # the standard version of this chart, and the gap is visible rather
 # than silently absent.
 # ------------------------------------------------------------
@@ -130,10 +138,13 @@ resource_to_cadre <- c(
   "Pharmaceutical\nstaff" = "pharmstaff", "Mental Health\nstaff" = "mentalstaff",
   "Nutrition\nstaff" = "nutristaff"
 )
-scenario_levels <- c(
-  "(i) No budget constraint (CET only)", "(ii) Provisional budget ($120M)",
-  "(iii) Illustrative scenario (literature-based workforce data)"
-)
+# Two panels, mirroring the standard (a)/(b) layout used for this
+# figure in the constrained-optimization literature: (a) the budget
+# alone, (b) budget together with health-workforce time. The
+# no-budget-constraint scenario is not one of the two panels here
+# (it isn't in the source layout either) - it stays in Table 2/3 as a
+# useful upper-bound check.
+scenario_levels <- c("(a) Budget only ($120M)", "(b) Budget + health-workforce constraints")
 
 build_program_share <- function(result, denom_usd) {
   result$package %>%
@@ -160,15 +171,13 @@ build_cadre_program_share <- function(cadre) {
 }
 
 program_data <- dplyr::bind_rows(
-  build_program_share(scenario_unconstrained, config$consumables_budget_usd) %>%
-    dplyr::mutate(scenario = scenario_levels[1], resource = "Consumables\nbudget"),
   build_program_share(scenario_budget, config$consumables_budget_usd) %>%
-    dplyr::mutate(scenario = scenario_levels[2], resource = "Consumables\nbudget"),
+    dplyr::mutate(scenario = scenario_levels[1], resource = "Consumables\nbudget"),
   build_program_share(scenario_stage2_illustrative, config$consumables_budget_usd) %>%
-    dplyr::mutate(scenario = scenario_levels[3], resource = "Consumables\nbudget"),
+    dplyr::mutate(scenario = scenario_levels[2], resource = "Consumables\nbudget"),
   dplyr::bind_rows(lapply(names(resource_to_cadre), function(res) {
     build_cadre_program_share(resource_to_cadre[[res]]) %>%
-      dplyr::mutate(scenario = scenario_levels[3], resource = res)
+      dplyr::mutate(scenario = scenario_levels[2], resource = res)
   }))
 ) %>%
   dplyr::mutate(
@@ -183,11 +192,10 @@ resource_totals <- program_data %>%
   dplyr::mutate(label_y = total_pct + max(total_pct) * 0.04) %>%
   dplyr::ungroup()
 
-# Placeholders only where data genuinely isn't available: the five HR
-# resources under scenarios (i)/(ii) (no HR constraint applied there
-# at all).
+# Placeholder only where data genuinely isn't available: the five HR
+# resources under panel (a) (budget only, no HR constraint applied).
 placeholder_data <- expand.grid(
-  scenario = factor(scenario_levels[1:2], levels = scenario_levels),
+  scenario = factor(scenario_levels[1], levels = scenario_levels),
   resource = factor(resource_levels[1:5], levels = resource_levels),
   stringsAsFactors = FALSE
 )
@@ -231,13 +239,14 @@ fig1_budget_use <- ggplot() +
     strip.text = element_text(face = "bold", color = liser_bleu, size = rel(1))
   )
 
-export_figure(fig1_budget_use, "optimization_fig1_budget_use_by_program", config$output_figures_dir, width = 9, height = 15)
+export_figure(fig1_budget_use, "optimization_fig1_budget_use_by_program", config$output_figures_dir, width = 9, height = 10.5)
 
 # ------------------------------------------------------------
 # Figure 2: marginal value of investing $1000 in different
-# health-system resources, one panel per scenario, same resource axis
-# as Figure 1 (health-worker cadres shown as "not yet available"
-# placeholders, Stage 2).
+# health-system resources, panels (a)/(b) matching Figure 1, same
+# resource axis. Health-worker cadres are placeholders in BOTH panels
+# here (unlike Figure 1): converting $1,000 into cadre time needs a
+# salary figure by cadre, which this exercise does not have.
 # ------------------------------------------------------------
 scenario_plus1000 <- optimize_benefit_package(
   league_table, cet_usd_per_daly = config$cet_usd_per_daly, budget_usd = config$consumables_budget_usd + 1000
@@ -253,18 +262,16 @@ scenario_stage2_plus1000 <- optimize_benefit_package(
 )
 marginal_value_budget_stage2 <- scenario_stage2_plus1000$summary$net_dalys_averted - scenario_stage2_illustrative$summary$net_dalys_averted
 
-# Under no budget constraint at all, every intervention with a
-# positive net health benefit is already fully covered (confirmed by
-# n_interventions_in_package == n_interventions_positive_nethealth in
-# Table 2) - an additional $1000 cannot buy any more health, so the
-# marginal value of the consumables budget is exactly 0 in that
-# scenario, not a figure requiring its own solve (Inf + 1000 = Inf).
 marginal_data <- data.frame(
-  resource = factor(rep(resource_levels[6], 3), levels = resource_levels),
+  resource = factor(rep(resource_levels[6], 2), levels = resource_levels),
   scenario = factor(scenario_levels, levels = scenario_levels),
-  value = c(0, marginal_value_budget, marginal_value_budget_stage2)
+  value = c(marginal_value_budget, marginal_value_budget_stage2)
 )
 
+# Placeholder only where data genuinely isn't available: converting
+# $1,000 into cadre time needs a salary figure by cadre, not available
+# for either panel, so both panels show the HR placeholders here
+# (unlike Figure 1, where panel (b) has real per-cadre resource-use data).
 placeholder_marginal <- expand.grid(
   scenario = factor(scenario_levels, levels = scenario_levels),
   resource = factor(resource_levels[1:5], levels = resource_levels),
@@ -297,7 +304,7 @@ fig2_marginal_value <- ggplot() +
     strip.text = element_text(face = "bold", color = liser_bleu, size = rel(1))
   )
 
-export_figure(fig2_marginal_value, "optimization_fig2_marginal_value", config$output_figures_dir, width = 9, height = 11)
+export_figure(fig2_marginal_value, "optimization_fig2_marginal_value", config$output_figures_dir, width = 9, height = 7.5)
 
 # ------------------------------------------------------------
 # Excel export: Table 2, Table 3, and per-scenario package detail
