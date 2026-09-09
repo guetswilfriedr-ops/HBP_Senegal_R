@@ -24,6 +24,9 @@ group_ids_for <- function(group_type) {
   if (group_type == "wealth") wealth_group_ids else residence_group_ids
 }
 
+#' Format a DALY total as millions for axis labels (e.g. 12,345,000 -> "12.3M")
+millions_label <- function(x) paste0(format(round(x / 1e6, 1), nsmall = 1), "M")
+
 #' Health equity impact plane: one point per intervention, x = its
 #' impact on inequality (delta EDE, population-scaled, minus net
 #' health benefit), y = its net health benefit - the Senegal
@@ -50,23 +53,72 @@ build_equity_plane_plot <- function(equity_metrics, group_type = c("wealth", "re
     p <- p + geom_point(color = "#000066", alpha = 0.75, size = 2.2)
   }
 
-  top_point <- df %>% dplyr::slice_max(total_net_benefit, n = 1)
+  # Label up to 4 standout interventions - candidates are the top 3 by
+  # net benefit plus the single most negative and single most positive
+  # inequality impact, ranked by how far each sits from the origin (in
+  # axis-normalized units) and added greedily, skipping any candidate
+  # that would land too close to an already-labeled point. This yields
+  # 2-4 labels depending on how clustered the data actually is, rather
+  # than forcing 4 labels into a dense cluster where they'd overlap.
   x_range <- range(df$inequality_impact)
-  label_on_left_half <- (top_point$inequality_impact - x_range[1]) <= diff(x_range) / 2
-  label_hjust <- if (label_on_left_half) 0 else 1
-  label_nudge <- diff(x_range) * 0.02 * if (label_on_left_half) 1 else -1
+  y_range <- range(df$total_net_benefit)
+  x_span <- diff(x_range)
+  y_span <- diff(y_range)
+
+  candidates <- dplyr::bind_rows(
+    df %>% dplyr::slice_max(total_net_benefit, n = 3),
+    df %>% dplyr::slice_min(inequality_impact, n = 1),
+    df %>% dplyr::slice_max(inequality_impact, n = 1)
+  ) %>%
+    dplyr::distinct(intervention, .keep_all = TRUE) %>%
+    dplyr::mutate(
+      x_norm = (inequality_impact - x_range[1]) / x_span,
+      y_norm = (total_net_benefit - y_range[1]) / y_span,
+      extremeness = pmax(abs(x_norm - 0.5), abs(y_norm - 0.5))
+    ) %>%
+    dplyr::arrange(dplyr::desc(extremeness))
+
+  min_sep <- 0.12  # minimum normalized-plot distance between two labels
+  selected <- candidates[0, ]
+  for (i in seq_len(nrow(candidates))) {
+    cand <- candidates[i, ]
+    if (nrow(selected) == 0) {
+      selected <- cand
+    } else {
+      d <- sqrt((selected$x_norm - cand$x_norm)^2 + (selected$y_norm - cand$y_norm)^2)
+      if (all(d >= min_sep) && nrow(selected) < 4) selected <- dplyr::bind_rows(selected, cand)
+    }
+  }
+  truncate_label <- function(x, max_chars = 32) {
+    ifelse(nchar(x) > max_chars, paste0(substr(x, 1, max_chars - 1), "…"), x)
+  }
+
+  labeled_points <- selected %>%
+    dplyr::mutate(
+      label_short = truncate_label(intervention),
+      label_hjust = ifelse(x_norm <= 0.5, 0, 1),
+      label_nudge_x = x_span * 0.02 * ifelse(x_norm <= 0.5, 1, -1)
+    )
 
   p +
     geom_hline(yintercept = 0, color = "#7C797C", linewidth = 0.4) +
     geom_vline(xintercept = 0, color = "#7C797C", linewidth = 0.4) +
     geom_text(
-      data = top_point, aes(label = intervention),
-      hjust = label_hjust, vjust = 0.5, nudge_x = label_nudge,
-      size = 3, color = "#000066", fontface = "bold"
+      data = labeled_points,
+      aes(label = label_short, hjust = label_hjust),
+      vjust = 0.5,
+      nudge_x = labeled_points$label_nudge_x,
+      size = 2.8, color = "#000066", fontface = "bold"
     ) +
+    scale_x_continuous(labels = millions_label) +
+    scale_y_continuous(labels = millions_label) +
     labs(
-      x = "Inequality impact (DALYs averted-equivalent; population-scaled change in EDE health minus net health benefit)",
-      y = "Net population health benefit (DALYs averted)"
+      x = paste0("Inequality impact, DALYs-equivalent (millions) - by ", dimension_label),
+      y = "Net population health benefit, DALYs averted (millions)",
+      caption = paste0(
+        "Quadrants: ++ benefit and narrows inequality  |  +- benefit but widens inequality  |  ",
+        "-+ loss but narrows inequality  |  -- loss and widens inequality"
+      )
     ) +
     liser_chart_theme(base_size = 10)
 }
@@ -157,4 +209,94 @@ build_hale_plot <- function(baseline_hale, distribution, interventions, national
     coord_cartesian(ylim = c(min(df$baseline) * 0.9, max(df$baseline + df$gain) * 1.05)) +
     labs(x = NULL, y = "HALE (years)") +
     liser_chart_theme(base_size = 10)
+}
+
+#' Direct benefit / opportunity cost / net benefit by group, full and
+#' realistic implementation side by side in one figure (facets), so the
+#' two scenarios can be compared directly instead of across two
+#' separate images
+#'
+#' @param group_summary Output of aggregate_dcea_by_group() (R/12)
+#' @param group_type "wealth" or "residence"
+build_benefit_breakdown_combined_plot <- function(group_summary, group_type = c("wealth", "residence")) {
+  group_type <- match.arg(group_type)
+  labels <- group_labels_for(group_type)
+
+  build_scenario_df <- function(scenario) {
+    suffix <- if (scenario == "full") "" else "_realistic"
+    scenario_label <- if (scenario == "full") "Full implementation" else "Realistic implementation"
+    group_summary %>%
+      transmute(
+        group = factor(labels[group_id], levels = unname(labels)),
+        `Direct benefit` = .data[[paste0("direct_benefit", suffix)]],
+        `Opportunity cost` = -.data[[paste0("opportunity_cost", suffix)]],
+        `Net benefit` = .data[[paste0("net_benefit", suffix)]]
+      ) %>%
+      tidyr::pivot_longer(-group, names_to = "component", values_to = "value") %>%
+      mutate(scenario = factor(scenario_label, levels = c("Full implementation", "Realistic implementation")))
+  }
+
+  df <- dplyr::bind_rows(build_scenario_df("full"), build_scenario_df("realistic")) %>%
+    mutate(component = factor(component, levels = c("Direct benefit", "Opportunity cost", "Net benefit")))
+
+  ggplot(df, aes(x = group, y = value, fill = component)) +
+    geom_col(data = ~ filter(.x, component != "Net benefit"), position = "identity", alpha = 0.85) +
+    geom_point(data = ~ filter(.x, component == "Net benefit"), color = "#000000", size = 2.5) +
+    geom_hline(yintercept = 0, color = "#7C797C", linewidth = 0.4) +
+    facet_wrap(~scenario, nrow = 1) +
+    scale_fill_manual(values = c(
+      "Direct benefit" = "#000066", "Opportunity cost" = "#E30613", "Net benefit" = "#000000"
+    ), name = NULL) +
+    scale_y_continuous(labels = millions_label) +
+    labs(x = NULL, y = "DALYs (millions)") +
+    liser_chart_theme(base_size = 10) +
+    theme(legend.position = "top", strip.background = element_rect(fill = "#CCC6E0", color = NA))
+}
+
+#' Baseline vs. post-package HALE, wealth quintile and residence side by
+#' side in one figure (facets, free x scale since the two stratifiers
+#' have a different number of groups)
+#'
+#' @param baseline_hale Output of build_baseline_hale() (R/13)
+#' @param distribution Output of build_dcea_distribution() (R/12)
+#' @param interventions Character vector of intervention names in the package
+#' @param national_population config$dcea$national_population
+#' @param scenario "full" or "realistic"
+build_hale_combined_plot <- function(baseline_hale, distribution, interventions, national_population,
+                                      scenario = c("full", "realistic")) {
+  scenario <- match.arg(scenario)
+  net_col <- if (scenario == "full") "net_benefit" else "net_benefit_realistic"
+
+  build_group_df <- function(group_type) {
+    group_ids <- group_ids_for(group_type)
+    labels <- group_labels_for(group_type)
+    base <- get_baseline_vectors(baseline_hale, group_type, group_ids)
+    group_population <- base$pop_weights * national_population
+
+    by_group <- distribution %>%
+      filter(.data$group_type == !!group_type, intervention %in% interventions) %>%
+      group_by(group_id) %>%
+      summarise(net_benefit = sum(.data[[net_col]], na.rm = TRUE), .groups = "drop") %>%
+      mutate(net_benefit_per_capita = net_benefit / group_population[group_id])
+
+    data.frame(
+      stratifier = if (group_type == "wealth") "Wealth quintile" else "Residence",
+      group = factor(labels[group_ids], levels = unname(labels)),
+      baseline = as.numeric(base$health[group_ids]),
+      gain = by_group$net_benefit_per_capita[match(group_ids, by_group$group_id)]
+    )
+  }
+
+  df <- dplyr::bind_rows(build_group_df("wealth"), build_group_df("residence")) %>%
+    mutate(stratifier = factor(stratifier, levels = c("Wealth quintile", "Residence")))
+
+  ggplot(df, aes(x = group)) +
+    geom_col(aes(y = baseline), fill = "#CCC6E0", width = 0.6) +
+    geom_col(aes(y = baseline + gain), fill = NA, color = "#000066", linewidth = 0.9, width = 0.6) +
+    geom_text(aes(y = baseline + gain, label = sprintf("+%.2f", gain)), vjust = -0.4, size = 3.0) +
+    facet_wrap(~stratifier, nrow = 1, scales = "free_x") +
+    coord_cartesian(ylim = c(min(df$baseline) * 0.9, max(df$baseline + df$gain) * 1.05)) +
+    labs(x = NULL, y = "HALE (years)") +
+    liser_chart_theme(base_size = 10) +
+    theme(strip.background = element_rect(fill = "#CCC6E0", color = NA))
 }

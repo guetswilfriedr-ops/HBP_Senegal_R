@@ -176,18 +176,18 @@ sensitivity_table <- build_dcea_sensitivity_table(
 export_figure(build_equity_plane_plot(wealth_equity, "wealth"), "dcea_equity_plane_wealth", config$output_figures_dir, width = 9, height = 7)
 export_figure(build_equity_plane_plot(residence_equity, "residence"), "dcea_equity_plane_residence", config$output_figures_dir, width = 9, height = 7)
 
-export_figure(build_benefit_breakdown_plot(wealth_summary, "wealth", "full"), "dcea_benefit_breakdown_wealth_full", config$output_figures_dir, width = 8, height = 6)
-export_figure(build_benefit_breakdown_plot(wealth_summary, "wealth", "realistic"), "dcea_benefit_breakdown_wealth_realistic", config$output_figures_dir, width = 8, height = 6)
-export_figure(build_benefit_breakdown_plot(residence_summary, "residence", "full"), "dcea_benefit_breakdown_residence_full", config$output_figures_dir, width = 7, height = 6)
-export_figure(build_benefit_breakdown_plot(residence_summary, "residence", "realistic"), "dcea_benefit_breakdown_residence_realistic", config$output_figures_dir, width = 7, height = 6)
-
 export_figure(
-  build_hale_plot(baseline_hale, distribution, package_interventions, config$dcea$national_population, "wealth"),
-  "dcea_hale_by_wealth", config$output_figures_dir, width = 8, height = 6
+  build_benefit_breakdown_combined_plot(wealth_summary, "wealth"),
+  "dcea_benefit_breakdown_wealth", config$output_figures_dir, width = 10, height = 6
 )
 export_figure(
-  build_hale_plot(baseline_hale, distribution, package_interventions, config$dcea$national_population, "residence"),
-  "dcea_hale_by_residence", config$output_figures_dir, width = 7, height = 6
+  build_benefit_breakdown_combined_plot(residence_summary, "residence"),
+  "dcea_benefit_breakdown_residence", config$output_figures_dir, width = 9, height = 6
+)
+
+export_figure(
+  build_hale_combined_plot(baseline_hale, distribution, package_interventions, config$dcea$national_population),
+  "dcea_hale_combined", config$output_figures_dir, width = 10, height = 6
 )
 
 # ------------------------------------------------------------
