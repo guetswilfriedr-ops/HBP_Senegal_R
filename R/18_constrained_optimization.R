@@ -338,6 +338,56 @@ build_hr_marginal_value <- function(league_table_subset, cet_usd_per_daly, budge
   }, numeric(1))
 }
 
+#' Health-system resource use with NO capacity constraint applied at
+#' all: the total resource footprint of covering every cost-effective
+#' intervention (ICER at or below the CET) at full (100%) target
+#' coverage, as a percentage of available capacity. Unlike
+#' optimize_benefit_package() (which always solves within capacity, so
+#' every result is at most 100%), this is a direct sum - it can and
+#' typically does exceed 100%, showing the size of the gap between
+#' what a cost-effectiveness-only view of the benefit package would
+#' need and what the health system can actually deliver.
+#'
+#' @param league_table_subset Interventions to sum over (e.g.
+#'   hr_data$league_table_subset for the HR cadres, or the full
+#'   usable league table for the consumables budget) - already
+#'   filtered to icer_usd <= cet_usd_per_daly by the caller.
+#' @param hr_needs hr_needs data frame aligned by row with
+#'   league_table_subset (build_hr_needs_8bucket()'s output).
+#' @param hr_capacity_minutes Named numeric vector, capacity by cadre.
+#' @return A data frame: main_category, resource (cadre name), minutes
+#'   needed, and pct (percentage of that cadre's capacity) - one row
+#'   per program x cadre combination with non-zero need, ready to
+#'   stack into a bar chart the same way build_cadre_program_share() is.
+build_unconstrained_hr_use <- function(league_table_subset, hr_needs, hr_capacity_minutes, cadre) {
+  league_table_subset %>%
+    dplyr::mutate(.need_min = hr_needs[[cadre]]) %>%
+    dplyr::filter(.need_min > 0) %>%
+    dplyr::group_by(main_category) %>%
+    dplyr::summarise(minutes = sum(cases_full_2023 * .need_min), .groups = "drop") %>%
+    dplyr::mutate(pct = 100 * minutes / hr_capacity_minutes[[cadre]]) %>%
+    dplyr::select(main_category, pct) %>%
+    dplyr::arrange(main_category)
+}
+
+#' Same idea as build_unconstrained_hr_use(), for the consumables
+#' budget: total drugs/commodities cost of every cost-effective
+#' intervention at full coverage, as a percentage of the provisional
+#' consumables budget.
+#'
+#' @param league_table_subset Interventions to sum over, already
+#'   filtered to icer_usd <= cet_usd_per_daly.
+#' @param budget_usd Consumables budget (config$consumables_budget_usd).
+#' @return A data frame: main_category, pct.
+build_unconstrained_budget_use <- function(league_table_subset, budget_usd) {
+  league_table_subset %>%
+    dplyr::group_by(main_category) %>%
+    dplyr::summarise(spend = sum(total_cost_full_usd), .groups = "drop") %>%
+    dplyr::mutate(pct = 100 * spend / budget_usd) %>%
+    dplyr::select(main_category, pct) %>%
+    dplyr::arrange(main_category)
+}
+
 #' Task-shifting transform of an hr_needs matrix (build_hr_needs_8bucket()'s
 #' output): reassigns every intervention's pharmaceutical-staff and
 #' nutrition-staff minutes onto nursing-staff, then zeroes the two

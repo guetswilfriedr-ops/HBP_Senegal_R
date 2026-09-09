@@ -149,22 +149,14 @@ table3 <- build_program_inclusion_table(list(
 ))
 
 # ------------------------------------------------------------
-# Figure 1: health-system resource use by program. The standard
-# version of this chart (see the reference reporting structure) puts
-# one bar PER RESOURCE on the x-axis - each health-worker cadre, plus
-# the consumables budget - stacked and colour-coded by the disease
-# program consuming that resource, panels (a) base scenario, (b)
-# task-shifting scenario. Both panels have real health-worker-cadre
-# bars (no placeholders): the health-workforce constraint applies in
-# both, they differ only in the task-shifting reassignment.
-#
-# Only four of the eight reference cadres appear on this axis
-# (doctor/clinical officer, nursing, pharmaceutical, mental health).
-# Lab, dental, nutrition and diagnostic/radiography staff are left out
+# Resource axis shared by the two resource-use figures below: four of
+# the eight reference cadres (doctor/clinical officer, nursing,
+# pharmaceutical, mental health) plus the consumables budget. Lab,
+# dental, nutrition and diagnostic/radiography staff are left out
 # because none of the 68 crosswalk-matched interventions carries any
 # recorded need for them in the reference data - they would be a fixed
-# 0% in every scenario, not an optimization result, so showing them
-# would misrepresent a data-coverage gap as a finding.
+# 0% in every scenario, not a finding, so showing them would
+# misrepresent a data-coverage gap as a result.
 # ------------------------------------------------------------
 resource_levels <- c(
   "Doctor/\nClinical officer", "Nursing\nstaff", "Pharmaceutical\nstaff",
@@ -174,6 +166,18 @@ resource_to_cadre <- c(
   "Doctor/\nClinical officer" = "medstaff", "Nursing\nstaff" = "nursingstaff",
   "Pharmaceutical\nstaff" = "pharmstaff", "Mental Health\nstaff" = "mentalstaff"
 )
+
+# ------------------------------------------------------------
+# Figure: health-system resource use by program. The standard version
+# of this chart (see the reference reporting structure) puts one bar
+# PER RESOURCE on the x-axis - each health-worker cadre, plus the
+# consumables budget - stacked and colour-coded by the disease program
+# consuming that resource, panels (a) base scenario, (b) task-shifting
+# scenario. Both panels have real health-worker-cadre bars (no
+# placeholders): the health-workforce constraint applies in both, they
+# differ only in the task-shifting reassignment. Uses the same
+# resource_levels/resource_to_cadre axis defined above.
+# ------------------------------------------------------------
 scenario_levels <- c("(a) Base scenario", "(b) Task-shifting scenario")
 
 build_program_share <- function(result, denom_usd) {
@@ -235,6 +239,84 @@ resource_totals <- program_data %>%
   dplyr::group_by(scenario) %>%
   dplyr::mutate(label_y = total_pct + max(total_pct) * 0.04) %>%
   dplyr::ungroup()
+
+suppressMessages(library(patchwork))
+
+# ------------------------------------------------------------
+# Figure: health-system resource use without vs with constraints.
+# Panel (a) sums, for every intervention with an ICER at or below the
+# CET, the resource it would need at full (100%) target coverage - no
+# capacity limit applied, so a resource can and does exceed 100%. This
+# shows the size of the gap between a cost-effectiveness-only view of
+# the benefit package and what the health system can actually deliver.
+# Panel (b) is the base scenario's own resource use (budget + HR
+# capacity jointly respected, so every bar is at most 100% by
+# construction) - the same data as the base-scenario panel of the
+# next figure, repeated here for direct visual comparison against the
+# unconstrained gap in panel (a).
+# ------------------------------------------------------------
+ce_mask_hr <- hr_data$league_table_subset$icer_usd <= config$cet_usd_per_daly
+ce_subset_hr <- hr_data$league_table_subset[ce_mask_hr, ]
+ce_hr_needs <- hr_data$hr_needs[ce_mask_hr, ]
+ce_subset_full <- league_table %>%
+  dplyr::filter(!is.na(dalys_final), !is.na(unit_cost_final_usd), !is.na(cases_full_2023), cases_full_2023 > 0) %>%
+  dplyr::filter(icer_usd <= config$cet_usd_per_daly)
+
+unconstrained_data <- dplyr::bind_rows(
+  build_unconstrained_budget_use(ce_subset_full, config$consumables_budget_usd) %>%
+    dplyr::mutate(resource = "Consumables\nbudget"),
+  dplyr::bind_rows(lapply(names(resource_to_cadre), function(res) {
+    build_unconstrained_hr_use(ce_subset_hr, ce_hr_needs, hr_capacity_illustrative, resource_to_cadre[[res]]) %>%
+      dplyr::mutate(resource = res)
+  }))
+) %>%
+  dplyr::mutate(scenario = "(a) Without constraints", resource = factor(resource, levels = resource_levels))
+
+constrained_data <- program_data %>%
+  dplyr::filter(scenario == scenario_levels[1]) %>%
+  dplyr::mutate(scenario = "(b) With constraints (base scenario)") %>%
+  dplyr::select(main_category, pct, resource, scenario)
+
+gap_data <- dplyr::bind_rows(unconstrained_data, constrained_data) %>%
+  dplyr::mutate(
+    main_category = factor(main_category, levels = sort(unique(main_category))),
+    scenario = factor(scenario, levels = c("(a) Without constraints", "(b) With constraints (base scenario)"))
+  )
+
+gap_totals <- gap_data %>%
+  dplyr::group_by(scenario, resource) %>%
+  dplyr::summarise(total_pct = sum(pct), .groups = "drop") %>%
+  dplyr::group_by(scenario) %>%
+  dplyr::mutate(label_y = total_pct + max(total_pct) * 0.04) %>%
+  dplyr::ungroup()
+
+build_gap_panel <- function(scenario_label, y_max) {
+  pd <- gap_data %>% dplyr::filter(scenario == scenario_label)
+  rt <- gap_totals %>% dplyr::filter(scenario == scenario_label)
+  ggplot() +
+    geom_hline(yintercept = 100, linetype = "dashed", color = liser_rouge, linewidth = 0.4) +
+    geom_col(data = pd, aes(x = resource, y = pct, fill = main_category), width = 0.6, color = "white", linewidth = 0.3) +
+    geom_text(data = rt, aes(x = resource, y = label_y, label = paste0(round(total_pct, 1), "%")),
+              color = liser_bleu, fontface = "bold", size = 3.2) +
+    scale_x_discrete(limits = resource_levels, drop = FALSE) +
+    scale_fill_manual(values = liser_categorical_palette, name = NULL, na.translate = FALSE, drop = FALSE) +
+    scale_y_continuous(breaks = seq(0, y_max, 50), labels = paste0(seq(0, y_max, 50), "%"),
+                        limits = c(0, y_max), expand = expansion(mult = c(0, 0.06))) +
+    labs(x = NULL, y = "Percentage of resource required", title = scenario_label) +
+    liser_chart_theme() +
+    theme(
+      legend.position = "bottom", legend.text = element_text(size = 8.5),
+      axis.text.x = element_text(face = "bold", color = liser_bleu, size = rel(0.72)),
+      plot.title = element_text(face = "bold", color = liser_bleu, size = rel(1), hjust = 0.5)
+    )
+}
+
+y_max_common <- ceiling(max(gap_totals$total_pct) * 1.15 / 50) * 50
+fig_gap <- (build_gap_panel(levels(gap_data$scenario)[1], y_max_common) /
+              build_gap_panel(levels(gap_data$scenario)[2], y_max_common)) +
+  plot_layout(guides = "collect") & theme(legend.position = "bottom")
+
+export_figure(fig_gap, "optimization_fig0_resource_gap", config$output_figures_dir, width = 9, height = 10.5)
 
 # Built as two separate panels (not facet_wrap) and stacked with
 # patchwork: facet_wrap only draws the shared x-axis category labels
