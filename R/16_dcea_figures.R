@@ -51,13 +51,17 @@ build_equity_plane_plot <- function(equity_metrics, group_type = c("wealth", "re
   }
 
   top_point <- df %>% dplyr::slice_max(total_net_benefit, n = 1)
+  x_range <- range(df$inequality_impact)
+  label_on_left_half <- (top_point$inequality_impact - x_range[1]) <= diff(x_range) / 2
+  label_hjust <- if (label_on_left_half) 0 else 1
+  label_nudge <- diff(x_range) * 0.02 * if (label_on_left_half) 1 else -1
 
   p +
     geom_hline(yintercept = 0, color = "#7C797C", linewidth = 0.4) +
     geom_vline(xintercept = 0, color = "#7C797C", linewidth = 0.4) +
     geom_text(
       data = top_point, aes(label = intervention),
-      hjust = 0, vjust = 0.5, nudge_x = diff(range(df$inequality_impact)) * 0.02,
+      hjust = label_hjust, vjust = 0.5, nudge_x = label_nudge,
       size = 3, color = "#000066", fontface = "bold"
     ) +
     labs(
