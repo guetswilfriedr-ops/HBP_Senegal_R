@@ -69,6 +69,12 @@ build_equity_plane_plot <- function(equity_metrics, group_type = c("wealth", "re
   x_span <- diff(x_range)
   y_span <- diff(y_range)
 
+  all_points <- df %>%
+    dplyr::mutate(
+      x_norm = (inequality_impact - x_range[1]) / x_span,
+      y_norm = (total_net_benefit - y_range[1]) / y_span
+    )
+
   candidates <- dplyr::bind_rows(
     df %>% dplyr::slice_max(total_net_benefit, n = 3),
     df %>% dplyr::slice_min(inequality_impact, n = 1),
@@ -82,10 +88,16 @@ build_equity_plane_plot <- function(equity_metrics, group_type = c("wealth", "re
     ) %>%
     dplyr::arrange(dplyr::desc(extremeness))
 
-  min_sep <- 0.12  # minimum normalized-plot distance between two labels
+  min_sep <- 0.12       # minimum normalized-plot distance between two labels
+  min_sep_cluster <- 0.035  # minimum distance from ANY point, so a label
+                           # is never dropped right on top of the dense
+                           # unlabeled cluster it's meant to stand out from
   selected <- candidates[0, ]
   for (i in seq_len(nrow(candidates))) {
     cand <- candidates[i, ]
+    d_cluster <- sqrt((all_points$x_norm - cand$x_norm)^2 + (all_points$y_norm - cand$y_norm)^2)
+    n_close <- sum(d_cluster < min_sep_cluster) - 1  # exclude the point itself
+    if (n_close > 0) next
     if (nrow(selected) == 0) {
       selected <- cand
     } else {
