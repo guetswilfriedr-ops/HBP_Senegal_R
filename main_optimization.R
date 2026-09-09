@@ -31,10 +31,11 @@
 #     metric-by-scenario layout (including per-cadre capacity used).
 #   - Table 3 equivalent: rate of inclusion by disease program, base
 #     vs. task-shifting scenario.
+#   - A resource-use-without-constraints figure: every cost-effective
+#     intervention at full coverage, no capacity limit applied, next
+#     to the base scenario's own (always <=100%) solution.
 #   - Figure 1 equivalent: resource use by program - panels (a) base
 #     scenario, (b) task-shifting scenario.
-#   - Figure 2 equivalent: marginal net DALYs averted from an
-#     additional $1000 per resource - same two panels.
 #
 # Run with: Rscript main_optimization.R
 # ============================================================
@@ -311,9 +312,18 @@ build_gap_panel <- function(scenario_label, y_max) {
     )
 }
 
-y_max_common <- ceiling(max(gap_totals$total_pct) * 1.15 / 50) * 50
-fig_gap <- (build_gap_panel(levels(gap_data$scenario)[1], y_max_common) /
-              build_gap_panel(levels(gap_data$scenario)[2], y_max_common)) +
+# Each panel gets its own y-axis maximum (rounded up to the next 50)
+# rather than a maximum shared across both: panel (b) never exceeds
+# 100% by construction, so sharing panel (a)'s much taller axis would
+# leave panel (b) looking mostly empty.
+y_max_by_scenario <- gap_totals %>%
+  dplyr::group_by(scenario) %>%
+  dplyr::summarise(y_max = ceiling(max(total_pct) * 1.15 / 50) * 50, .groups = "drop")
+y_max_a <- y_max_by_scenario$y_max[y_max_by_scenario$scenario == levels(gap_data$scenario)[1]]
+y_max_b <- y_max_by_scenario$y_max[y_max_by_scenario$scenario == levels(gap_data$scenario)[2]]
+
+fig_gap <- (build_gap_panel(levels(gap_data$scenario)[1], y_max_a) /
+              build_gap_panel(levels(gap_data$scenario)[2], y_max_b)) +
   plot_layout(guides = "collect") & theme(legend.position = "bottom")
 
 export_figure(fig_gap, "optimization_fig0_resource_gap", config$output_figures_dir, width = 9, height = 10.5)
@@ -359,79 +369,6 @@ fig1_budget_use <- (build_fig1_panel(scenario_levels[1]) / build_fig1_panel(scen
   plot_layout(guides = "collect") & theme(legend.position = "bottom")
 
 export_figure(fig1_budget_use, "optimization_fig1_budget_use_by_program", config$output_figures_dir, width = 9, height = 10.5)
-
-# ------------------------------------------------------------
-# Figure 2: marginal value of investing $1000 in different
-# health-system resources, panels (a)/(b) matching Figure 1, same
-# resource axis. Health-worker cadres remain placeholders in both
-# panels: converting $1,000 into cadre time uses each cadre's monthly
-# salary (hr_salary_monthly_usd, R/18) - the reference study's own
-# supplementary Table S9 figures (its own workbook has no salary data
-# at all - checked directly) - the same literature source as the
-# health-worker time-per-case and capacity figures above. Every cadre
-# on the axis is real in both panels now; only the mechanism's
-# validated limits differ by cadre (see build_hr_marginal_value(),
-# R/18, and validate_optimization_against_reference.R).
-# ------------------------------------------------------------
-hr_workforce_size <- build_illustrative_hr_workforce_size()
-marginal_cadres_fig2 <- c("medstaff", "nursingstaff", "pharmstaff", "mentalstaff")
-
-marginal_value_base <- optimize_benefit_package(
-  hr_data$league_table_subset,
-  cet_usd_per_daly = config$cet_usd_per_daly,
-  budget_usd = config$consumables_budget_usd + 1000,
-  hr_needs = hr_data$hr_needs,
-  hr_capacity_minutes = hr_capacity_illustrative
-)$summary$net_dalys_averted - scenario_base$summary$net_dalys_averted
-
-marginal_value_task_shifting <- optimize_benefit_package(
-  hr_data$league_table_subset,
-  cet_usd_per_daly = config$cet_usd_per_daly,
-  budget_usd = config$consumables_budget_usd + 1000,
-  hr_needs = hr_needs_task_shifted,
-  hr_capacity_minutes = hr_capacity_illustrative
-)$summary$net_dalys_averted - scenario_task_shifting$summary$net_dalys_averted
-
-marginal_by_cadre_base <- build_hr_marginal_value(
-  hr_data$league_table_subset, cet_usd_per_daly = config$cet_usd_per_daly, budget_usd = config$consumables_budget_usd,
-  hr_needs = hr_data$hr_needs, hr_capacity_minutes = hr_capacity_illustrative, workforce_size = hr_workforce_size,
-  salary_monthly_usd = hr_salary_monthly_usd, cadres = marginal_cadres_fig2, base_result = scenario_base
-)
-marginal_by_cadre_ts <- build_hr_marginal_value(
-  hr_data$league_table_subset, cet_usd_per_daly = config$cet_usd_per_daly, budget_usd = config$consumables_budget_usd,
-  hr_needs = hr_needs_task_shifted, hr_capacity_minutes = hr_capacity_illustrative, workforce_size = hr_workforce_size,
-  salary_monthly_usd = hr_salary_monthly_usd, cadres = marginal_cadres_fig2, base_result = scenario_task_shifting
-)
-
-marginal_data <- rbind(
-  data.frame(resource = resource_levels[5], scenario = scenario_levels[1], value = marginal_value_base),
-  data.frame(resource = resource_levels[5], scenario = scenario_levels[2], value = marginal_value_task_shifting),
-  data.frame(resource = names(resource_to_cadre), scenario = scenario_levels[1], value = marginal_by_cadre_base[resource_to_cadre[names(resource_to_cadre)]]),
-  data.frame(resource = names(resource_to_cadre), scenario = scenario_levels[2], value = marginal_by_cadre_ts[resource_to_cadre[names(resource_to_cadre)]])
-)
-marginal_data$resource <- factor(marginal_data$resource, levels = resource_levels)
-marginal_data$scenario <- factor(marginal_data$scenario, levels = scenario_levels)
-rownames(marginal_data) <- NULL
-
-fig2_marginal_value <- ggplot() +
-  geom_col(data = marginal_data, aes(x = resource, y = value), fill = liser_bleu, width = 0.6) +
-  geom_text(
-    data = marginal_data,
-    aes(x = resource, y = value, label = paste0("+", sprintf("%.2f", value), " DALYs")),
-    hjust = -0.1, size = 3, color = liser_bleu, fontface = "bold"
-  ) +
-  coord_flip(clip = "off") +
-  scale_x_discrete(limits = rev(resource_levels), drop = FALSE) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.18))) +
-  facet_wrap(~scenario, ncol = 1) +
-  labs(x = "Resource", y = "Net DALYs averted") +
-  liser_chart_theme() +
-  theme(
-    axis.text.y = element_text(face = "bold", color = liser_bleu, size = rel(0.85)),
-    strip.text = element_text(face = "bold", color = liser_bleu, size = rel(1))
-  )
-
-export_figure(fig2_marginal_value, "optimization_fig2_marginal_value", config$output_figures_dir, width = 9, height = 7.5)
 
 # ------------------------------------------------------------
 # Excel export: Table 2, Table 3, and per-scenario package detail
@@ -570,9 +507,7 @@ write_xlsx_sheet(wb_supp, "ST10 - Scenarios summary", st10, freeze_col = 1)
 save_xlsx(wb_supp, "optimization_supplementary_tables", config$output_tables_dir)
 
 cat("\n=== Constrained optimization (Senegal): base and task-shifting scenarios ===\n")
-cat("Provisional consumables budget: $", format(config$consumables_budget_usd, big.mark = ","), "\n", sep = "")
-cat("Marginal value of $1000 more budget - base scenario:", round(marginal_value_base, 2), "net DALYs averted\n")
-cat("Marginal value of $1000 more budget - task-shifting scenario:", round(marginal_value_task_shifting, 2), "net DALYs averted\n\n")
+cat("Provisional consumables budget: $", format(config$consumables_budget_usd, big.mark = ","), "\n\n", sep = "")
 print(table2, row.names = FALSE)
 cat("\nWritten to:", file.path(config$output_tables_dir, "optimization_results.xlsx"), "\n")
 cat("Supplementary tables written to:", file.path(config$output_tables_dir, "optimization_supplementary_tables.xlsx"), "\n")
