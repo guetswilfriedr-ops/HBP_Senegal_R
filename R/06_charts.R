@@ -75,7 +75,7 @@ build_funnel_flow_plot <- function(funnel_summary) {
 
   side_arrows <- exclusion_boxes %>%
     transmute(
-      x = box_width / 2 + 0.1, xend = box_width + 1.9,
+      x = box_width + 0.1, xend = box_width + 1.9,
       y = y, yend = y
     )
 
@@ -107,7 +107,12 @@ build_funnel_flow_plot <- function(funnel_summary) {
       arrow = arrow(length = unit(0.15, "cm")), color = liser_rouge
     ) +
     coord_cartesian(xlim = c(-0.5, box_width + 2 + 6), clip = "off") +
-    theme_void()
+    theme_void() +
+    theme(
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "white", color = NA),
+      plot.margin = margin(16, 20, 12, 16)
+    )
 }
 
 # Short label for the exclusion side-box at each step
