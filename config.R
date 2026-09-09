@@ -96,9 +96,17 @@ config <- list(
   ),
 
   # A Tufts ratio (DALY averted per patient) is discarded as
-  # implausible if its absolute value exceeds this bound, mirroring
-  # the check in 'Senegal HBP Tool - Top20 Causes'!BE.
-  tufts_ratio_plausibility_bound = 6,
+  # implausible if its absolute value exceeds this bound. Raised from
+  # 6 (which mirrored 'Senegal HBP Tool - Top20 Causes'!BE) to 30 after
+  # reviewing the full Tufts_Ratios distribution: values above roughly
+  # the 99th percentile (~50) are population/programme-level DALY
+  # figures (e.g. national vaccination campaigns), not per-patient
+  # ones, so a bound in this range excludes that whole class while
+  # keeping every genuine per-patient clinical value. This bound alone
+  # cannot catch a plausible-but-wrong-topic match (an implausible
+  # magnitude is a different problem from an implausible source) - see
+  # the id_Ratio review that motivated raising it.
+  tufts_ratio_plausibility_bound = 30,
 
   # Placeholder national consumables/drug budget for the constrained-
   # optimization analysis (R/18_constrained_optimization.R). NOT yet a
