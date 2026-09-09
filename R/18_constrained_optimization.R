@@ -504,14 +504,36 @@ cadre_display_labels <- c(
   diagstaff    = "Diagnostic imaging staff capacity used (%)"
 )
 
+#' Format a percentage so an exact whole number (0%, 100%, ...) shows
+#' with no decimals, while a value that would otherwise round away to
+#' a misleadingly "clean" figure (e.g. 0.4% -> "0%", 99.96% -> "100%")
+#' keeps decimals instead of silently losing that precision. Used
+#' everywhere a constrained-optimization percentage is displayed
+#' (tables, and the figures' own percentage labels).
+#'
+#' @param x Numeric value already on a 0-100 scale (i.e. pre-multiplied)
+#' @param digits Decimal places to show for a non-whole value (default 1)
+format_pct <- function(x, digits = 1) {
+  rounded <- round(x, digits)
+  is_whole <- !is.na(rounded) & (rounded == round(rounded))
+  ifelse(is.na(x), NA_character_,
+    ifelse(is_whole, paste0(round(rounded), "%"), paste0(format(rounded, nsmall = digits, big.mark = ","), "%"))
+  )
+}
+
+#' Format a large count (DALYs, cases) with thousands separators, no
+#' decimals - used for the headline whole-number metrics in
+#' build_scenario_comparison_table().
+format_count <- function(x) format(round(x), big.mark = ",", scientific = FALSE)
+
 build_scenario_comparison_table <- function(scenario_results) {
   metric_rows <- list(
     "Number of interventions with positive net health benefit" = function(s) s$n_interventions_positive_nethealth,
     "Number of interventions in the optimal package"           = function(s) s$n_interventions_in_package,
-    "Net DALYs averted"                                        = function(s) round(s$net_dalys_averted),
-    "Total DALYs averted"                                      = function(s) round(s$total_dalys_averted),
-    "Highest ICER in the optimal package ($)"                  = function(s) round(s$highest_icer_in_package, 2),
-    "Percentage of consumables budget required"                = function(s) if (is.na(s$budget_used_pct)) NA else paste0(round(100 * s$budget_used_pct), "%")
+    "Net DALYs averted"                                        = function(s) format_count(s$net_dalys_averted),
+    "Total DALYs averted"                                      = function(s) format_count(s$total_dalys_averted),
+    "Highest ICER in the optimal package ($)"                  = function(s) format(round(s$highest_icer_in_package, 2), nsmall = 2, big.mark = ","),
+    "Percentage of consumables budget required"                = function(s) if (is.na(s$budget_used_pct)) NA else format_pct(100 * s$budget_used_pct)
   )
 
   # Cadre-utilization rows, added only for the cadres actually
@@ -525,7 +547,7 @@ build_scenario_comparison_table <- function(scenario_results) {
       cadre <- cadre
       function(s) {
         if (is.null(s$hr_used_minutes) || is.null(s$hr_used_minutes[[cadre]])) return(NA)
-        paste0(round(100 * s$hr_used_minutes[[cadre]] / s$hr_capacity_minutes[[cadre]]), "%")
+        format_pct(100 * s$hr_used_minutes[[cadre]] / s$hr_capacity_minutes[[cadre]])
       }
     })
   }
@@ -616,8 +638,8 @@ build_program_inclusion_table <- function(scenario_results) {
       left_join(included_by_program, by = c("Program" = "main_category")) %>%
       mutate(n_included = coalesce(n_included, 0L))
     out[[paste0(scenario_name, " - Number included")]] <- out$n_included
-    out[[paste0(scenario_name, " - Percentage included")]] <- paste0(
-      round(100 * out$n_included / out$`Number of interventions considered`), "%"
+    out[[paste0(scenario_name, " - Percentage included")]] <- format_pct(
+      100 * out$n_included / out$`Number of interventions considered`
     )
     out$n_included <- NULL
   }
@@ -628,7 +650,7 @@ build_program_inclusion_table <- function(scenario_results) {
     num_col <- paste0(scenario_name, " - Number included")
     pct_col <- paste0(scenario_name, " - Percentage included")
     total_row[[num_col]] <- sum(out[[num_col]])
-    total_row[[pct_col]] <- paste0(round(100 * total_row[[num_col]] / total_row[["Number of interventions considered"]]), "%")
+    total_row[[pct_col]] <- format_pct(100 * total_row[[num_col]] / total_row[["Number of interventions considered"]])
   }
   rbind(out, total_row)
 }

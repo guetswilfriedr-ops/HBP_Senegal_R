@@ -103,7 +103,7 @@ scenario_stage2_illustrative <- optimize_benefit_package(
 scenario_results <- list(
   "No budget constraint (CET only)"       = scenario_unconstrained,
   "Provisional budget ($120M)"            = scenario_budget,
-  "Illustrative Stage 2 (proxy HR data)"  = scenario_stage2_illustrative
+  "Illustrative scenario (literature-based workforce data)"  = scenario_stage2_illustrative
 )
 
 table2 <- build_scenario_comparison_table(scenario_results)
@@ -132,7 +132,7 @@ resource_to_cadre <- c(
 )
 scenario_levels <- c(
   "(i) No budget constraint (CET only)", "(ii) Provisional budget ($120M)",
-  "(iii) Illustrative Stage 2 (proxy HR data)"
+  "(iii) Illustrative scenario (literature-based workforce data)"
 )
 
 build_program_share <- function(result, denom_usd) {
@@ -198,7 +198,7 @@ fig1_budget_use <- ggplot() +
     fill = liser_gris_light, width = 0.6
   ) +
   geom_text(
-    data = placeholder_data, aes(x = resource, y = 50, label = "Data not yet\navailable\n(Stage 2)"),
+    data = placeholder_data, aes(x = resource, y = 50, label = "Data not yet\navailable"),
     size = 2.3, color = "grey40", lineheight = 0.9, fontface = "italic"
   ) +
   geom_col(
@@ -277,7 +277,7 @@ fig2_marginal_value <- ggplot() +
     fill = liser_gris_light, width = 0.6
   ) +
   geom_text(
-    data = placeholder_marginal, aes(x = resource, y = max(marginal_data$value) * 0.55, label = "Data not yet\navailable (Stage 2)"),
+    data = placeholder_marginal, aes(x = resource, y = max(marginal_data$value) * 0.55, label = "Data not yet\navailable"),
     size = 2.3, color = "grey40", lineheight = 0.9, fontface = "italic"
   ) +
   geom_col(data = marginal_data, aes(x = resource, y = value), fill = liser_bleu, width = 0.6) +
@@ -329,7 +329,7 @@ save_xlsx(wb, "optimization_results", config$output_tables_dir)
 # the moment that data exists, but every cell is explicitly marked
 # "A completer" rather than filled with a borrowed or invented number.
 # ------------------------------------------------------------
-not_available_note <- "A completer - donnees RH Senegal non disponibles a ce stade (Stage 2)"
+not_available_note <- "A completer - donnees RH Senegal non disponibles; une estimation issue de la litterature pourrait etre utilisee en attendant"
 
 st1 <- build_supp_table_interventions(league_table)
 
@@ -372,7 +372,7 @@ st4 <- data.frame(
 st5 <- build_supp_table_outcomes(scenario_budget)
 
 st6 <- data.frame(
-  Note = "Task-shifting scenario requires Senegal-specific health-worker-cadre time and capacity data, not yet available (Stage 2). No equivalent scenario is reported this round."
+  Note = "Task-shifting scenario requires Senegal-specific health-worker-cadre time and capacity data, not yet available. No equivalent scenario is reported this round."
 )
 
 st7 <- data.frame(
@@ -424,7 +424,7 @@ write_xlsx_sheet(wb_supp, "ST9 - Salaries by cadre", st9, freeze_col = 0)
 write_xlsx_sheet(wb_supp, "ST10 - Scenarios summary", st10, freeze_col = 1)
 save_xlsx(wb_supp, "optimization_supplementary_tables", config$output_tables_dir)
 
-cat("\n=== Constrained optimization (Senegal, Stage 1: budget only) ===\n")
+cat("\n=== Constrained optimization (Senegal, budget-only analysis) ===\n")
 cat("Provisional consumables budget: $", format(config$consumables_budget_usd, big.mark = ","), "\n", sep = "")
 cat("Marginal value of $1000 more budget:", round(marginal_value_budget, 2), "net DALYs averted\n\n")
 print(table2, row.names = FALSE)
