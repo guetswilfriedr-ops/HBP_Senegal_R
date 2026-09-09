@@ -12,6 +12,7 @@ source("R/03_costs.R")
 source("R/04_effectiveness.R")
 source("R/05_league_table.R")
 source("R/06_charts.R")
+source("R/07_demographic_charts.R")
 source("R/08_export.R")
 source("R/09_priority_setting_analysis.R")
 
@@ -53,9 +54,13 @@ funnel <- build_intervention_funnel(
 # ------------------------------------------------------------
 funnel_flow_plot <- build_funnel_flow_plot(funnel$funnel_summary)
 top20_causes_plot <- build_top20_causes_plot(config$raw_data_path)
+child_mortality_trend_plot <- build_child_mortality_trend_plot()
+maternal_mortality_plot <- build_maternal_mortality_plot()
 
 export_figure(funnel_flow_plot, "funnel_flow", config$output_figures_dir, width = 11, height = 7)
 export_figure(top20_causes_plot, "top20_causes_dalys", config$output_figures_dir, width = 9, height = 7.5)
+export_figure(child_mortality_trend_plot, "demographic_child_mortality_trend", config$output_figures_dir, width = 8, height = 5)
+export_figure(maternal_mortality_plot, "demographic_maternal_mortality_ratio", config$output_figures_dir, width = 8, height = 5)
 
 # ------------------------------------------------------------
 # Step-by-step trace, one workbook with one sheet per step
