@@ -131,20 +131,26 @@ table3 <- build_program_inclusion_table(scenario_results)
 # the consumables budget - stacked and colour-coded by the disease
 # program consuming that resource, panels (a)/(b) matching the two
 # scenarios below. Senegal does not have health-worker-cadre data of
-# its own yet, so those five bars are drawn as explicit "not yet
-# available" placeholders in panel (a) rather than left out - the
-# resource axis stays complete and comparable to
-# the standard version of this chart, and the gap is visible rather
-# than silently absent.
+# its own yet, so those bars are drawn as explicit "not yet available"
+# placeholders in panel (a) rather than left out - the resource axis
+# stays comparable to the standard version of this chart, and the gap
+# is visible rather than silently absent.
+#
+# Only four of the eight reference cadres appear on this axis
+# (doctor/clinical officer, nursing, pharmaceutical, mental health).
+# Lab, dental, nutrition and diagnostic/radiography staff are left out
+# because none of the 68 crosswalk-matched interventions carries any
+# recorded need for them in the reference data - they would be a fixed
+# 0% in every scenario, not an optimization result, so showing them
+# would misrepresent a data-coverage gap as a finding.
 # ------------------------------------------------------------
 resource_levels <- c(
   "Doctor/\nClinical officer", "Nursing\nstaff", "Pharmaceutical\nstaff",
-  "Mental Health\nstaff", "Nutrition\nstaff", "Consumables\nbudget"
+  "Mental Health\nstaff", "Consumables\nbudget"
 )
 resource_to_cadre <- c(
   "Doctor/\nClinical officer" = "medstaff", "Nursing\nstaff" = "nursingstaff",
-  "Pharmaceutical\nstaff" = "pharmstaff", "Mental Health\nstaff" = "mentalstaff",
-  "Nutrition\nstaff" = "nutristaff"
+  "Pharmaceutical\nstaff" = "pharmstaff", "Mental Health\nstaff" = "mentalstaff"
 )
 # Two panels, mirroring the standard (a)/(b) layout used for this
 # figure in the constrained-optimization literature: (a) the budget
@@ -200,11 +206,11 @@ resource_totals <- program_data %>%
   dplyr::mutate(label_y = total_pct + max(total_pct) * 0.04) %>%
   dplyr::ungroup()
 
-# Placeholder only where data genuinely isn't available: the five HR
+# Placeholder only where data genuinely isn't available: the four HR
 # resources under panel (a) (budget only, no HR constraint applied).
 placeholder_data <- expand.grid(
   scenario = factor(scenario_levels[1], levels = scenario_levels),
-  resource = factor(resource_levels[1:5], levels = resource_levels),
+  resource = factor(resource_levels[1:4], levels = resource_levels),
   stringsAsFactors = FALSE
 )
 
@@ -271,7 +277,7 @@ scenario_stage2_plus1000 <- optimize_benefit_package(
 marginal_value_budget_stage2 <- scenario_stage2_plus1000$summary$net_dalys_averted - scenario_stage2_illustrative$summary$net_dalys_averted
 
 marginal_data <- data.frame(
-  resource = factor(rep(resource_levels[6], 2), levels = resource_levels),
+  resource = factor(rep(resource_levels[5], 2), levels = resource_levels),
   scenario = factor(scenario_levels, levels = scenario_levels),
   value = c(marginal_value_budget, marginal_value_budget_stage2)
 )
@@ -282,7 +288,7 @@ marginal_data <- data.frame(
 # (unlike Figure 1, where panel (b) has real per-cadre resource-use data).
 placeholder_marginal <- expand.grid(
   scenario = factor(scenario_levels, levels = scenario_levels),
-  resource = factor(resource_levels[1:5], levels = resource_levels),
+  resource = factor(resource_levels[1:4], levels = resource_levels),
   stringsAsFactors = FALSE
 )
 
